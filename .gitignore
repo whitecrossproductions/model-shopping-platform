@@ -1,0 +1,11 @@
+# Local files
+.DS_Store
+*.log
+node_modules/
+
+# Backup files
+*-backup-*.html
+
+# Environment files
+.env
+.env.local
