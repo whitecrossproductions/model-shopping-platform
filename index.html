@@ -17,6 +17,7 @@
     <script type="module">
       import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
       import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, onSnapshot, query } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+      import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
       const firebaseConfig = {
         apiKey: "AIzaSyDTmFMxH2pb6cn8PVO7FXs5bjU1cdfa1bY",
@@ -29,12 +30,15 @@
 
       const app = initializeApp(firebaseConfig);
       const db = getFirestore(app);
+      const auth = getAuth(app);
 
       window.firebaseDB = db;
+      window.firebaseAuth = auth;
       window.firebaseModules = { collection, getDocs, doc, setDoc, deleteDoc, onSnapshot, query };
+      window.firebaseAuthModules = { signInWithEmailAndPassword, signOut, onAuthStateChanged };
       window.firebaseReady = true;
 
-      console.log('Firebase initialized');
+      console.log('Firebase initialized with Authentication');
     </script>
 
     <script type="text/babel">
@@ -12777,12 +12781,118 @@
           return [...sortedTop, ...sortedOthers];
         }
 
+        // Login Screen Component
+        function LoginScreen() {
+          const [email, setEmail] = useState('');
+          const [password, setPassword] = useState('');
+          const [error, setError] = useState('');
+          const [loading, setLoading] = useState(false);
+
+          const handleLogin = async (e) => {
+            e.preventDefault();
+            setError('');
+            setLoading(true);
+
+            try {
+              const { signInWithEmailAndPassword } = window.firebaseAuthModules;
+              const auth = window.firebaseAuth;
+              await signInWithEmailAndPassword(auth, email, password);
+              // User state will be updated by onAuthStateChanged
+            } catch (err) {
+              console.error('Login error:', err);
+              if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+                setError('Invalid email or password');
+              } else if (err.code === 'auth/user-not-found') {
+                setError('No account found with this email');
+              } else {
+                setError('Login failed. Please try again.');
+              }
+              setLoading(false);
+            }
+          };
+
+          return (
+            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+                <div className="text-center mb-8">
+                  <h1 className="text-3xl font-bold text-slate-900 mb-2">Talent Shopping Platform</h1>
+                  <p className="text-slate-600">Sign in to access your dashboard</p>
+                </div>
+
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="your@email.com"
+                      disabled={loading}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Password</label>
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="••••••••"
+                      disabled={loading}
+                    />
+                  </div>
+
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Signing in...' : 'Sign In'}
+                  </button>
+                </form>
+
+                <div className="mt-6 text-center text-sm text-slate-500">
+                  <p>Protected by Firebase Authentication</p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
         function TalentShoppingPlatform() {
+          const [user, setUser] = useState(null);
+          const [authLoading, setAuthLoading] = useState(true);
           const [activeTab, setActiveTab] = useState('dashboard');
           const [models, setModels] = useState([]);
           const [agencies, setAgencies] = useState([]);
           const [projects, setProjects] = useState([]);
           const [loading, setLoading] = useState(true);
+
+          // Check authentication state
+          useEffect(() => {
+            const checkAuth = () => {
+              if (window.firebaseAuth && window.firebaseAuthModules) {
+                const { onAuthStateChanged } = window.firebaseAuthModules;
+                onAuthStateChanged(window.firebaseAuth, (currentUser) => {
+                  setUser(currentUser);
+                  setAuthLoading(false);
+                });
+              } else {
+                setTimeout(checkAuth, 100);
+              }
+            };
+            checkAuth();
+          }, []);
 
           useEffect(() => {
             const loadFirebaseData = async () => {
@@ -12877,12 +12987,30 @@
             }
           }, [projects, loading]);
 
+          // Show auth loading spinner
+          if (authLoading) {
+            return (
+              <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-slate-600 font-medium">Checking authentication...</p>
+                </div>
+              </div>
+            );
+          }
+
+          // Show login screen if not authenticated
+          if (!user) {
+            return <LoginScreen />;
+          }
+
+          // Show data loading spinner
           if (loading) {
             return (
               <div className="min-h-screen bg-slate-50 flex items-center justify-center">
                 <div className="text-center">
                   <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-slate-600 font-medium">Loading Platform V2.3...</p>
+                  <p className="text-slate-600 font-medium">Loading your data...</p>
                 </div>
               </div>
             );
@@ -12913,6 +13041,17 @@
                       <span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium">
                         {projects.length} Projects
                       </span>
+                      <button
+                        onClick={async () => {
+                          if (confirm('Are you sure you want to sign out?')) {
+                            const { signOut } = window.firebaseAuthModules;
+                            await signOut(window.firebaseAuth);
+                          }
+                        }}
+                        className="px-3 py-1 bg-red-50 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
+                      >
+                        Sign Out
+                      </button>
                     </div>
                   </div>
                 </div>
