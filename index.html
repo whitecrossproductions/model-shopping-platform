@@ -13336,6 +13336,89 @@
                   </div>
                 )}
               </div>
+
+              {/* Suggested Markets */}
+              <div className="bg-amber-50 rounded-lg border-2 border-amber-200 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-2xl">💡</span>
+                  <h2 className="text-lg font-semibold text-amber-900">Suggested Markets</h2>
+                </div>
+                <p className="text-sm text-amber-800 mb-4">
+                  Top markets where your models haven't been shopped yet or don't have signings
+                </p>
+                <div className="space-y-3">
+                  {models.map(model => {
+                    // Get signed territories for this model
+                    const signedTerritories = BASE_SIGNED_MODELS
+                      .filter(sm =>
+                        sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() &&
+                        sm.status === 'signed'
+                      )
+                      .map(sm => sm.territory);
+
+                    // Get territories where model has projects
+                    const shoppedTerritories = projects
+                      .filter(p => p.modelId === model.id)
+                      .map(p => p.territory);
+
+                    // Top territories to consider
+                    const topMarkets = ['Los Angeles', 'New York', 'Paris', 'Milan', 'London'];
+
+                    // Find missing markets
+                    const missingMarkets = topMarkets.filter(market =>
+                      !signedTerritories.includes(market) && !shoppedTerritories.includes(market)
+                    );
+
+                    // Only show if there are missing markets
+                    if (missingMarkets.length === 0) return null;
+
+                    return (
+                      <div key={model.id} className="bg-white rounded-lg p-4 border border-amber-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-900">{model.name}</span>
+                            <span className="text-xs text-slate-500 capitalize">({model.gender})</span>
+                          </div>
+                          <button
+                            onClick={() => setActiveTab('projects')}
+                            className="text-xs px-3 py-1 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+                          >
+                            Create Project
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {missingMarkets.map(market => (
+                            <span key={market} className="px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs font-medium">
+                              {market}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }).filter(Boolean)}
+                  {models.every(model => {
+                    const signedTerritories = BASE_SIGNED_MODELS
+                      .filter(sm =>
+                        sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() &&
+                        sm.status === 'signed'
+                      )
+                      .map(sm => sm.territory);
+                    const shoppedTerritories = projects
+                      .filter(p => p.modelId === model.id)
+                      .map(p => p.territory);
+                    const topMarkets = ['Los Angeles', 'New York', 'Paris', 'Milan', 'London'];
+                    const missingMarkets = topMarkets.filter(market =>
+                      !signedTerritories.includes(market) && !shoppedTerritories.includes(market)
+                    );
+                    return missingMarkets.length === 0;
+                  }) && (
+                    <div className="text-center py-4 text-amber-700">
+                      <span className="text-2xl mb-2 block">✓</span>
+                      <p className="text-sm">All your models are covered in the top markets!</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           );
         }
