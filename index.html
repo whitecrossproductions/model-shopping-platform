@@ -15454,6 +15454,27 @@
 
         // Projects Component with NEW STRUCTURE
         function Projects({ models, agencies, projects, setProjects }) {
+          try {
+            console.log('Projects component rendering with:', {
+              projectsCount: projects?.length || 0,
+              modelsCount: models?.length || 0,
+              agenciesCount: agencies?.length || 0,
+              projects: projects,
+              models: models,
+              agencies: agencies
+            });
+          } catch (e) {
+            console.error('Error in Projects logging:', e);
+          }
+
+          if (!projects || !models || !agencies) {
+            return <div className="p-8 text-center text-red-600">
+              Error: Missing required data. Projects: {projects ? 'OK' : 'MISSING'},
+              Models: {models ? 'OK' : 'MISSING'},
+              Agencies: {agencies ? 'OK' : 'MISSING'}
+            </div>;
+          }
+
           const [showCreateModal, setShowCreateModal] = useState(false);
           const [editingProject, setEditingProject] = useState(null);
           const [filterTerritory, setFilterTerritory] = useState('all');
@@ -15472,6 +15493,11 @@
 
           // Calculate overall status for each project
           const projectsWithStatus = projects.map(project => {
+            if (!project.agencies || !Array.isArray(project.agencies)) {
+              console.error('Project has invalid agencies:', project);
+              return { ...project, overallStatus: 'not-contacted', contacted: 0, total: 0 };
+            }
+
             const contacted = project.agencies.filter(a => a.status !== 'not-contacted').length;
             const total = project.agencies.length;
             const percentage = total > 0 ? (contacted / total) * 100 : 0;
@@ -15482,6 +15508,8 @@
 
             return { ...project, overallStatus, contacted, total };
           });
+
+          console.log('Projects with status:', projectsWithStatus.length);
 
           const filteredProjects = projectsWithStatus.filter(project => {
             const matchesTerritory = filterTerritory === 'all' || project.territory === filterTerritory;
