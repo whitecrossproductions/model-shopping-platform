@@ -14606,6 +14606,8 @@
           const [parsing, setParsing] = useState(false);
           const [parsedResults, setParsedResults] = useState([]);
           const [selectedAgency, setSelectedAgency] = useState(null);
+          const [filterTerritory, setFilterTerritory] = useState('all');
+          const [searchTerm, setSearchTerm] = useState('');
 
           const handleParse = () => {
             setParsing(true);
@@ -14675,7 +14677,19 @@
             return acc;
           }, {});
 
-          const agenciesList = Object.values(uniqueAgencies).sort((a, b) =>
+          // Get all unique territories
+          const allTerritories = [...new Set(agencies.map(a => a.territory))].sort();
+
+          // Filter agencies
+          const filteredAgencies = Object.values(uniqueAgencies).filter(agency => {
+            const matchesTerritory = filterTerritory === 'all' || agency.territory === filterTerritory;
+            const matchesSearch = searchTerm === '' ||
+              agency.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              agency.territory.toLowerCase().includes(searchTerm.toLowerCase());
+            return matchesTerritory && matchesSearch;
+          });
+
+          const agenciesList = filteredAgencies.sort((a, b) =>
             a.name.localeCompare(b.name)
           );
 
@@ -14745,6 +14759,31 @@
                       <p className="text-sm text-slate-600 mb-3">
                         Manually set tier levels and ranking positions for agencies.
                       </p>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Search agencies..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                      <select
+                        value={filterTerritory}
+                        onChange={(e) => setFilterTerritory(e.target.value)}
+                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      >
+                        <option value="all">All Territories</option>
+                        {allTerritories.map(territory => (
+                          <option key={territory} value={territory}>{territory}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="text-xs text-slate-500 px-1">
+                      Showing {agenciesList.length} {agenciesList.length === 1 ? 'agency' : 'agencies'}
                     </div>
 
                     <div className="border border-slate-200 rounded-lg max-h-[500px] overflow-y-auto">
