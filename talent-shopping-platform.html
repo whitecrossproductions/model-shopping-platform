@@ -103,6 +103,114 @@
           }
         };
 
+        // CSV Export Helper Functions
+        const escapeCSV = (value) => {
+          if (value === null || value === undefined) return '';
+          const str = String(value);
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        };
+
+        const downloadCSV = (data, filename) => {
+          const blob = new Blob([data], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          const url = URL.createObjectURL(blob);
+          link.setAttribute('href', url);
+          link.setAttribute('download', filename);
+          link.style.visibility = 'hidden';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        };
+
+        const exportModelsCSV = (models) => {
+          const headers = ['Name', 'Gender', 'Mediaslide URL', 'Photo URL', 'Last Updated'];
+          const rows = models.map(m => [
+            escapeCSV(m.name),
+            escapeCSV(m.gender),
+            escapeCSV(m.mediaslideLink),
+            escapeCSV(m.photoUrl),
+            escapeCSV(m.lastUpdated ? new Date(m.lastUpdated).toLocaleString() : '')
+          ]);
+
+          const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+          const timestamp = new Date().toISOString().split('T')[0];
+          downloadCSV(csv, `models-export-${timestamp}.csv`);
+        };
+
+        const exportAgenciesCSV = (agencies) => {
+          const headers = ['Name', 'Territory', 'Tier', 'Gender Division', 'Women Rank', 'Men Rank', 'Contact Name', 'Contact Email', 'Contact Role', 'Instructions', 'Last Updated'];
+          const rows = [];
+
+          agencies.forEach(agency => {
+            const contacts = agency.contacts && agency.contacts.length > 0 ? agency.contacts : [{}];
+            contacts.forEach(contact => {
+              rows.push([
+                escapeCSV(agency.name),
+                escapeCSV(agency.territory),
+                escapeCSV(agency.tier),
+                escapeCSV(agency.genderDivision),
+                escapeCSV(agency.rankedWomen || ''),
+                escapeCSV(agency.rankedMen || ''),
+                escapeCSV(contact.name),
+                escapeCSV(contact.email),
+                escapeCSV(contact.role),
+                escapeCSV(agency.instructions),
+                escapeCSV(agency.lastUpdated ? new Date(agency.lastUpdated).toLocaleString() : '')
+              ]);
+            });
+          });
+
+          const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+          const timestamp = new Date().toISOString().split('T')[0];
+          downloadCSV(csv, `agencies-export-${timestamp}.csv`);
+        };
+
+        const exportProjectsCSV = (projects, models, agencies) => {
+          const headers = ['Model Name', 'Territory', 'Agency Name', 'Agency Tier', 'Status', 'Last Updated', 'Contacted Date', 'Notes'];
+          const rows = [];
+
+          projects.forEach(project => {
+            const model = models.find(m => m.id === project.modelId);
+            project.agencies.forEach(pa => {
+              const agency = agencies.find(a => a.id === pa.agencyId);
+              const statusObj = AGENCY_STATUSES.find(s => s.id === pa.status);
+              rows.push([
+                escapeCSV(model?.name || 'Unknown'),
+                escapeCSV(project.territory),
+                escapeCSV(agency?.name || 'Unknown'),
+                escapeCSV(agency?.tier || ''),
+                escapeCSV(statusObj?.label || pa.status),
+                escapeCSV(pa.statusUpdatedAt ? new Date(pa.statusUpdatedAt).toLocaleString() : ''),
+                escapeCSV(pa.contactedDate ? new Date(pa.contactedDate).toLocaleString() : ''),
+                escapeCSV(pa.notes)
+              ]);
+            });
+          });
+
+          const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+          const timestamp = new Date().toISOString().split('T')[0];
+          downloadCSV(csv, `projects-export-${timestamp}.csv`);
+        };
+
+        const exportSigningsCSV = (signedModels) => {
+          const headers = ['Model Name', 'Agency Name', 'Territory', 'Status', 'Start Date', 'End Date'];
+          const rows = signedModels.map(sm => [
+            escapeCSV(sm.modelName),
+            escapeCSV(sm.agencyName),
+            escapeCSV(sm.territory),
+            escapeCSV(sm.status),
+            escapeCSV(sm.startDate),
+            escapeCSV(sm.endDate)
+          ]);
+
+          const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+          const timestamp = new Date().toISOString().split('T')[0];
+          downloadCSV(csv, `signings-export-${timestamp}.csv`);
+        };
+
         const BASE_TERRITORIES = [
           'Paris', 'London', 'New York', 'Los Angeles', 'Milan', 
           'Tokyo', 'Sydney', 'Berlin', 'Barcelona', 'Miami',
@@ -13544,12 +13652,21 @@
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  + Add Model
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => exportModelsCSV(models)}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    title="Export models to CSV"
+                  >
+                    📊 Export CSV
+                  </button>
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    + Add Model
+                  </button>
+                </div>
               </div>
 
               {filteredModels.length === 0 ? (
@@ -14333,6 +14450,13 @@
                   </select>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => exportAgenciesCSV(agencies)}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    title="Export agencies to CSV"
+                  >
+                    📊 Export CSV
+                  </button>
                   <button
                     onClick={() => setShowRankingsModal(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -15721,12 +15845,21 @@
                     <option value="completed">Completed</option>
                   </select>
                 </div>
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  + Create Project
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => exportProjectsCSV(projects, models, agencies)}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    title="Export projects to CSV"
+                  >
+                    📊 Export CSV
+                  </button>
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    + Create Project
+                  </button>
+                </div>
               </div>
 
               {/* Status Legend */}
