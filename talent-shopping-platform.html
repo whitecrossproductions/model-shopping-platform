@@ -13544,7 +13544,7 @@
                   <h2 className="text-lg font-semibold text-amber-900">Suggested Markets</h2>
                 </div>
                 <p className="text-sm text-amber-800 mb-4">
-                  Top markets where your models haven't been shopped yet or don't have signings
+                  <span className="font-semibold">Top Markets</span> (amber) and <span className="font-semibold">Secondary Markets</span> (blue) where your models haven't been shopped yet
                 </p>
                 <div className="space-y-3">
                   {models.map(model => {
@@ -13561,16 +13561,24 @@
                       .filter(p => p.modelId === model.id)
                       .map(p => p.territory);
 
-                    // Top territories to consider
+                    // Top markets (priority)
                     const topMarkets = ['Los Angeles', 'New York', 'Paris', 'Milan', 'London'];
 
-                    // Find missing markets
-                    const missingMarkets = topMarkets.filter(market =>
+                    // Secondary markets
+                    const secondaryMarkets = ['Germany', 'Australia', 'San Diego', 'Seattle', 'Miami', 'Chicago', 'Canada', 'Japan', 'Mexico', 'North Carolina', 'Spain', 'Texas'];
+
+                    // Find missing top markets
+                    const missingTopMarkets = topMarkets.filter(market =>
+                      !signedTerritories.includes(market) && !shoppedTerritories.includes(market)
+                    );
+
+                    // Find missing secondary markets
+                    const missingSecondaryMarkets = secondaryMarkets.filter(market =>
                       !signedTerritories.includes(market) && !shoppedTerritories.includes(market)
                     );
 
                     // Only show if there are missing markets
-                    if (missingMarkets.length === 0) return null;
+                    if (missingTopMarkets.length === 0 && missingSecondaryMarkets.length === 0) return null;
 
                     return (
                       <div key={model.id} className="bg-white rounded-lg p-4 border border-amber-200">
@@ -13586,12 +13594,25 @@
                             Create Project
                           </button>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {missingMarkets.map(market => (
-                            <span key={market} className="px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs font-medium">
-                              {market}
-                            </span>
-                          ))}
+                        <div className="space-y-2">
+                          {missingTopMarkets.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {missingTopMarkets.map(market => (
+                                <span key={market} className="px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs font-medium border border-amber-300">
+                                  ⭐ {market}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {missingSecondaryMarkets.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {missingSecondaryMarkets.map(market => (
+                                <span key={market} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium border border-blue-300">
+                                  {market}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
