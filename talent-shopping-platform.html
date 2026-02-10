@@ -170,7 +170,7 @@
         };
 
         const exportProjectsCSV = (projects, models, agencies) => {
-          const headers = ['Model Name', 'Territory', 'Agency Name', 'Agency Tier', 'Status', 'Last Updated', 'Contacted Date', 'Notes'];
+          const headers = ['Model Name', 'Territory', 'Division', 'Agency Name', 'Agency Tier', 'Status', 'Last Updated', 'Contacted Date', 'Notes'];
           const rows = [];
 
           projects.forEach(project => {
@@ -181,6 +181,7 @@
               rows.push([
                 escapeCSV(model?.name || 'Unknown'),
                 escapeCSV(project.territory),
+                escapeCSV(project.division || ''),
                 escapeCSV(agency?.name || 'Unknown'),
                 escapeCSV(agency?.tier || ''),
                 escapeCSV(statusObj?.label || pa.status),
@@ -13516,6 +13517,7 @@
                                   <div key={project.id} className="flex items-center gap-3 text-sm bg-slate-50 rounded p-2">
                                     <div className="font-medium text-slate-700 min-w-[120px]">
                                       {project.territory}
+                                      {project.division && <span className="ml-1 text-xs text-blue-600">({project.division})</span>}
                                     </div>
                                     <div className="flex-1 flex items-center gap-2">
                                       <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
@@ -16226,6 +16228,7 @@
                       </span>
                       <h3 className="font-semibold text-slate-900 text-lg">
                         {model?.name || 'Unknown Model'} → {project.territory}
+                        {project.division && <span className="ml-2 text-sm text-blue-600">({project.division})</span>}
                       </h3>
                     </div>
                     
@@ -16604,6 +16607,7 @@
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-semibold text-slate-900">
                       📧 Batch Email Generator - {model?.name} → {project.territory}
+                      {project.division && <span className="ml-2 text-base text-blue-600">({project.division})</span>}
                     </h2>
                     <button
                       onClick={onClose}
@@ -16885,6 +16889,7 @@
         function CreateProjectModal({ models, agencies, projects, allTerritories, onClose, onCreate }) {
           const [selectedModel, setSelectedModel] = useState('');
           const [selectedTerritory, setSelectedTerritory] = useState('');
+          const [selectedDivision, setSelectedDivision] = useState('');
           const [selectedAgencies, setSelectedAgencies] = useState([]);
           const [overallNotes, setOverallNotes] = useState('');
           const [selectedTiers, setSelectedTiers] = useState(['Top Tier', 'Mid Tier', 'Low Tier']);
@@ -16956,6 +16961,7 @@
               onCreate({
                 modelId: selectedModel,
                 territory: selectedTerritory,
+                division: selectedDivision || '',
                 agencies: selectedAgencies.map(agencyId => ({
                   agencyId,
                   status: 'not-contacted',
@@ -17033,6 +17039,21 @@
                         ))}
                       </select>
                     </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Division
+                      </label>
+                      <select
+                        value={selectedDivision}
+                        onChange={(e) => setSelectedDivision(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select division...</option>
+                        <option value="Commercial">Commercial</option>
+                        <option value="Theatrical">Theatrical</option>
+                      </select>
+                    </div>
                   </div>
 
                   {selectedModel && model?.photoUrl && (
@@ -17044,7 +17065,10 @@
                       />
                       <div>
                         <p className="font-medium text-slate-900">{model.name}</p>
-                        <p className="text-sm text-slate-500">Shopping to {selectedTerritory || '...'}</p>
+                        <p className="text-sm text-slate-500">
+                          Shopping to {selectedTerritory || '...'}
+                          {selectedDivision && <span className="ml-1 text-blue-600">({selectedDivision})</span>}
+                        </p>
                       </div>
                     </div>
                   )}
