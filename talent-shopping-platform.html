@@ -212,16 +212,28 @@
         };
 
         const BASE_TERRITORIES = [
-          'Paris', 'London', 'New York', 'Los Angeles', 'Milan', 
-          'Tokyo', 'Sydney', 'Berlin', 'Barcelona', 'Miami',
-          'Seattle', 'Toronto', 'Amsterdam', 'Copenhagen', 'Seoul',
+          'Paris', 'London', 'New York', 'Los Angeles', 'Milan',
+          'Japan', 'Australia', 'Germany', 'Spain', 'Miami',
+          'Seattle', 'Canada', 'Amsterdam', 'Copenhagen', 'Seoul',
           'California', 'Florida', 'France', 'Italy', 'Austria',
-          'Australia', 'Belgium', 'Canada', 'Chicago, IL', 'China',
-          'Denmark', 'Germany', 'Georgia', 'Greece', 'Japan',
+          'Belgium', 'Chicago, IL', 'China',
+          'Denmark', 'Georgia', 'Greece',
           'Korea', 'Mexico', 'Netherlands', 'North Carolina', 'Norway',
-          'Poland', 'Spain', 'Sweden', 'Switzerland', 'Texas',
+          'Poland', 'Sweden', 'Switzerland', 'Texas',
           'Tennessee', 'Washington'
         ];
+
+        // Territory name migration map (old name -> new name)
+        const TERRITORY_MIGRATION = {
+          'Berlin': 'Germany',
+          'Barcelona': 'Spain',
+          'Dallas': 'Texas',
+          'Mexico City': 'Mexico',
+          'Sydney': 'Australia',
+          'Tokyo': 'Japan',
+          'Toronto': 'Canada',
+          'Charlotte': 'North Carolina'
+        };
 
         const TIERS = ['Top Tier', 'Mid Tier', 'Low Tier'];
 
@@ -13072,15 +13084,41 @@
                   };
                 });
 
-                setModels(modelsData || []);
-                setAgencies(agenciesData || []);
-                setProjects(migratedProjects);
+                // Migrate territory names
+                const migratedModels = (modelsData || []).map(model => ({
+                  ...model
+                }));
+
+                const migratedAgencies = (agenciesData || []).map(agency => ({
+                  ...agency,
+                  territory: TERRITORY_MIGRATION[agency.territory] || agency.territory
+                }));
+
+                const migratedProjectsWithTerritories = migratedProjects.map(project => ({
+                  ...project,
+                  territory: TERRITORY_MIGRATION[project.territory] || project.territory
+                }));
+
+                // Migrate signed models territories
+                const migratedSignedModels = BASE_SIGNED_MODELS.map(sm => ({
+                  ...sm,
+                  territory: TERRITORY_MIGRATION[sm.territory] || sm.territory
+                }));
+
+                setModels(migratedModels);
+                setAgencies(migratedAgencies);
+                setProjects(migratedProjectsWithTerritories);
 
                 // Load signed models from Firebase
                 const signedModelsData = await loadData(COLLECTIONS.SIGNED_MODELS);
                 if (signedModelsData && signedModelsData.length > 0) {
+                  // Migrate signed models territories
+                  const migratedSignedModelsData = signedModelsData.map(sm => ({
+                    ...sm,
+                    territory: TERRITORY_MIGRATION[sm.territory] || sm.territory
+                  }));
                   BASE_SIGNED_MODELS.length = 0;
-                  BASE_SIGNED_MODELS.push(...signedModelsData);
+                  BASE_SIGNED_MODELS.push(...migratedSignedModelsData);
                   console.log('✅ Loaded ' + signedModelsData.length + ' signed model records from Firebase');
                 }
 
