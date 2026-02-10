@@ -13355,11 +13355,15 @@
 
               <main className="max-w-7xl mx-auto px-6 py-8">
                 {activeTab === 'dashboard' && (
-                  <Dashboard 
-                    models={models} 
-                    agencies={agencies} 
+                  <Dashboard
+                    models={models}
+                    agencies={agencies}
                     projects={projects}
                     setActiveTab={setActiveTab}
+                    excludedMarkets={excludedMarkets}
+                    setExcludedMarkets={setExcludedMarkets}
+                    editingMarkets={editingMarkets}
+                    setEditingMarkets={setEditingMarkets}
                   />
                 )}
                 {activeTab === 'follow-up' && (
@@ -13396,7 +13400,7 @@
         }
 
         // Dashboard Component
-        function Dashboard({ models, agencies, projects, setActiveTab }) {
+        function Dashboard({ models, agencies, projects, setActiveTab, excludedMarkets, setExcludedMarkets, editingMarkets, setEditingMarkets }) {
           const allTerritories = getAllTerritories(agencies);
 
           // Group projects by model
