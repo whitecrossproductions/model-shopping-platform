@@ -13105,9 +13105,23 @@
                   territory: TERRITORY_MIGRATION[sm.territory] || sm.territory
                 }));
 
+                // Check if any territories were actually migrated
+                const agenciesNeedMigration = agenciesData.some(a => TERRITORY_MIGRATION[a.territory]);
+                const projectsNeedMigration = projectsData.some(p => TERRITORY_MIGRATION[p.territory]);
+
                 setModels(migratedModels);
                 setAgencies(migratedAgencies);
                 setProjects(migratedProjectsWithTerritories);
+
+                // Save migrated data back to Firebase if anything changed
+                if (agenciesNeedMigration) {
+                  console.log('🔄 Migrating agency territories to Firebase...');
+                  await saveData(COLLECTIONS.AGENCIES, migratedAgencies);
+                }
+                if (projectsNeedMigration) {
+                  console.log('🔄 Migrating project territories to Firebase...');
+                  await saveData(COLLECTIONS.PROJECTS, migratedProjectsWithTerritories);
+                }
 
                 // Load signed models from Firebase
                 const signedModelsData = await loadData(COLLECTIONS.SIGNED_MODELS);
@@ -13117,6 +13131,13 @@
                     ...sm,
                     territory: TERRITORY_MIGRATION[sm.territory] || sm.territory
                   }));
+
+                  const signedModelsNeedMigration = signedModelsData.some(sm => TERRITORY_MIGRATION[sm.territory]);
+                  if (signedModelsNeedMigration) {
+                    console.log('🔄 Migrating signed models territories to Firebase...');
+                    await saveData(COLLECTIONS.SIGNED_MODELS, migratedSignedModelsData);
+                  }
+
                   BASE_SIGNED_MODELS.length = 0;
                   BASE_SIGNED_MODELS.push(...migratedSignedModelsData);
                   console.log('✅ Loaded ' + signedModelsData.length + ' signed model records from Firebase');
