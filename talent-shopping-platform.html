@@ -16021,6 +16021,20 @@
           const [draggedTerritoryId, setDraggedTerritoryId] = useState(null);
           const [dragOverModelId, setDragOverModelId] = useState(null);
           const [dragOverTerritoryId, setDragOverTerritoryId] = useState(null);
+          const [editingNoteModelId, setEditingNoteModelId] = useState(null);
+          const [notesDraft, setNotesDraft] = useState('');
+
+          // Model notes stored per modelId - pull from first project of each model
+          const getModelNote = (modelId) => {
+            const p = projects.find(p => p.modelId === modelId);
+            return p?.modelNote || '';
+          };
+
+          const saveModelNote = (modelId, note) => {
+            // Save note to all projects for this model
+            setProjects(projects.map(p => p.modelId === modelId ? { ...p, modelNote: note } : p));
+            setEditingNoteModelId(null);
+          };
 
           const allTerritories = getAllTerritories(agencies);
 
@@ -16262,6 +16276,43 @@
                             <div className="mt-1.5 w-full bg-slate-100 rounded-full h-1.5 max-w-xs">
                               <div className="bg-blue-500 h-1.5 rounded-full transition-all" style={{ width: `${overallPct}%` }} />
                             </div>
+                            {/* Model Note - always visible */}
+                            {editingNoteModelId === model.id ? (
+                              <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={notesDraft}
+                                  onChange={(e) => setNotesDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveModelNote(model.id, notesDraft);
+                                    if (e.key === 'Escape') setEditingNoteModelId(null);
+                                  }}
+                                  placeholder="Add a note (e.g. waiting for photos, special case...)"
+                                  className="flex-1 px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50"
+                                />
+                                <button onClick={() => saveModelNote(model.id, notesDraft)} className="text-xs px-2 py-1 bg-amber-500 text-white rounded hover:bg-amber-600">Save</button>
+                                <button onClick={() => setEditingNoteModelId(null)} className="text-xs px-2 py-1 bg-slate-200 text-slate-600 rounded hover:bg-slate-300">Cancel</button>
+                              </div>
+                            ) : (
+                              <div className="mt-1.5 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                {getModelNote(model.id) ? (
+                                  <span
+                                    className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full cursor-pointer hover:bg-amber-100"
+                                    onClick={() => { setEditingNoteModelId(model.id); setNotesDraft(getModelNote(model.id)); }}
+                                  >
+                                    📝 {getModelNote(model.id)}
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => { setEditingNoteModelId(model.id); setNotesDraft(''); }}
+                                    className="text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-100 px-2 py-0.5 rounded-full transition-colors"
+                                  >
+                                    + Add note
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <button
