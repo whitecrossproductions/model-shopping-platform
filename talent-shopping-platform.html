@@ -13359,6 +13359,7 @@
                     models={models}
                     agencies={agencies}
                     projects={projects}
+                    setProjects={setProjects}
                     setActiveTab={setActiveTab}
                     excludedMarkets={excludedMarkets}
                     setExcludedMarkets={setExcludedMarkets}
@@ -13400,7 +13401,7 @@
         }
 
         // Dashboard Component
-        function Dashboard({ models, agencies, projects, setActiveTab, excludedMarkets, setExcludedMarkets, editingMarkets, setEditingMarkets }) {
+        function Dashboard({ models, agencies, projects, setProjects, setActiveTab, excludedMarkets, setExcludedMarkets, editingMarkets, setEditingMarkets }) {
           const allTerritories = getAllTerritories(agencies);
 
           // Group projects by model
@@ -13594,7 +13595,7 @@
                     const topMarkets = ['Los Angeles', 'New York', 'Paris', 'Milan', 'London'];
 
                     // Secondary markets
-                    const secondaryMarkets = ['Germany', 'Australia', 'San Diego', 'Seattle', 'Miami', 'Chicago', 'Canada', 'Japan', 'Mexico', 'North Carolina', 'Spain', 'Texas'];
+                    const secondaryMarkets = ['Germany', 'San Diego', 'Seattle', 'Miami', 'Chicago', 'Canada', 'North Carolina'];
 
                     // Get excluded markets for this model
                     const modelExcludedMarkets = excludedMarkets[model.id] || [];
@@ -13644,7 +13645,40 @@
                                   ✏️ Edit Markets
                                 </button>
                                 <button
-                                  onClick={() => setActiveTab('projects')}
+                                  onClick={() => {
+                                    const allMissingMarkets = [...missingTopMarkets, ...missingSecondaryMarkets];
+                                    const newProjects = allMissingMarkets
+                                      .filter(market => {
+                                        // Skip if a project already exists for this model+territory
+                                        return !projects.some(p => p.modelId === model.id && p.territory === market);
+                                      })
+                                      .map(market => {
+                                        // Get all agencies in this territory
+                                        const territorAgencies = agencies.filter(a => a.territory === market);
+                                        return {
+                                          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                                          modelId: model.id,
+                                          territory: market,
+                                          agencies: territorAgencies.map(a => ({
+                                            agencyId: a.id,
+                                            status: 'not-contacted',
+                                            sentDate: null,
+                                            notes: '',
+                                            contactedDate: null
+                                          })),
+                                          overallNotes: '',
+                                          createdDate: new Date().toISOString()
+                                        };
+                                      })
+                                      .filter(p => p.agencies.length > 0);
+                                    if (newProjects.length > 0) {
+                                      setProjects([...projects, ...newProjects]);
+                                      alert(`Created ${newProjects.length} project(s) for ${model.name}!`);
+                                      setActiveTab('projects');
+                                    } else {
+                                      alert('No agencies found in these territories yet. Add agencies first.');
+                                    }
+                                  }}
                                   className="text-xs px-3 py-1 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
                                 >
                                   Create Project
@@ -15994,6 +16028,8 @@
           const [editingProject, setEditingProject] = useState(null);
           const [filterTerritory, setFilterTerritory] = useState('all');
           const [filterStatus, setFilterStatus] = useState('all');
+          const [sortMode, setSortMode] = useState(false);
+          const [draggedProject, setDraggedProject] = useState(null);
 
           const getDaysAgo = (dateString) => {
             if (!dateString) return null;
@@ -16026,11 +16062,48 @@
 
           console.log('Projects with status:', projectsWithStatus.length);
 
-          const filteredProjects = projectsWithStatus.filter(project => {
-            const matchesTerritory = filterTerritory === 'all' || project.territory === filterTerritory;
-            const matchesStatus = filterStatus === 'all' || project.overallStatus === filterStatus;
-            return matchesTerritory && matchesStatus;
-          });
+          const filteredProjects = projectsWithStatus
+            .filter(project => {
+              const matchesTerritory = filterTerritory === 'all' || project.territory === filterTerritory;
+              const matchesStatus = filterStatus === 'all' || project.overallStatus === filterStatus;
+              return matchesTerritory && matchesStatus;
+            })
+            .sort((a, b) => {
+              const aPriority = a.priority !== undefined ? a.priority : 999999;
+              const bPriority = b.priority !== undefined ? b.priority : 999999;
+              return aPriority - bPriority;
+            });
+
+          const handleDragStart = (e, project) => {
+            setDraggedProject(project);
+            e.dataTransfer.effectAllowed = 'move';
+          };
+
+          const handleDragOver = (e, targetProject) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+          };
+
+          const handleDrop = (e, targetProject) => {
+            e.preventDefault();
+            if (!draggedProject || draggedProject.id === targetProject.id) return;
+
+            const currentOrder = [...filteredProjects];
+            const draggedIdx = currentOrder.findIndex(p => p.id === draggedProject.id);
+            const targetIdx = currentOrder.findIndex(p => p.id === targetProject.id);
+
+            const reordered = [...currentOrder];
+            reordered.splice(draggedIdx, 1);
+            reordered.splice(targetIdx, 0, draggedProject);
+
+            // Assign priority values based on new order
+            const updatedProjects = projects.map(p => {
+              const newIdx = reordered.findIndex(r => r.id === p.id);
+              return newIdx !== -1 ? { ...p, priority: newIdx } : p;
+            });
+            setProjects(updatedProjects);
+            setDraggedProject(null);
+          };
 
           const createProject = (projectData) => {
             const newProject = {
@@ -16088,6 +16161,13 @@
                     📊 Export CSV
                   </button>
                   <button
+                    onClick={() => setSortMode(!sortMode)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${sortMode ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                    title="Drag to reorder projects by priority"
+                  >
+                    {sortMode ? '✓ Done Sorting' : '↕ Sort Priority'}
+                  </button>
+                  <button
                     onClick={() => setShowCreateModal(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
@@ -16138,19 +16218,39 @@
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {sortMode && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800 flex items-center gap-2">
+                      <span>↕</span>
+                      <span>Drag projects to reorder by priority. Top = most urgent. Click <strong>Done Sorting</strong> when finished.</span>
+                    </div>
+                  )}
                   {filteredProjects.map(project => {
                     const model = models.find(m => m.id === project.modelId);
-                    
                     return (
-                      <ProjectCard
+                      <div
                         key={project.id}
-                        project={project}
-                        model={model}
-                        agencies={agencies}
-                        onEdit={() => setEditingProject(project)}
-                        onDelete={deleteProject}
-                        onUpdate={updateProject}
-                      />
+                        draggable={sortMode}
+                        onDragStart={sortMode ? (e) => handleDragStart(e, project) : undefined}
+                        onDragOver={sortMode ? (e) => handleDragOver(e, project) : undefined}
+                        onDrop={sortMode ? (e) => handleDrop(e, project) : undefined}
+                        className={sortMode ? 'cursor-grab active:cursor-grabbing' : ''}
+                        style={sortMode && draggedProject?.id === project.id ? { opacity: 0.5 } : {}}
+                      >
+                        {sortMode && (
+                          <div className="flex items-center gap-2 mb-1 pl-2">
+                            <span className="text-slate-400 text-sm">⠿⠿ drag to reorder</span>
+                          </div>
+                        )}
+                        <ProjectCard
+                          key={project.id}
+                          project={project}
+                          model={model}
+                          agencies={agencies}
+                          onEdit={() => setEditingProject(project)}
+                          onDelete={deleteProject}
+                          onUpdate={updateProject}
+                        />
+                      </div>
                     );
                   })}
                 </div>
