@@ -16320,6 +16320,19 @@
                               className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
                               title="Add territory project for this model"
                             >+ Territory</button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Delete ALL projects for ${model.name}? This cannot be undone.`)) {
+                                  for (const p of modelProjects) {
+                                    await deleteData(COLLECTIONS.PROJECTS, p.id);
+                                  }
+                                  setProjects(projects.filter(p => p.modelId !== model.id));
+                                }
+                              }}
+                              className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors"
+                              title="Delete all projects for this model"
+                            >🗑️ Delete</button>
                             <span className="text-slate-400 text-lg">{isExpanded ? '▼' : '▶'}</span>
                           </div>
                         </div>
