@@ -13203,9 +13203,19 @@
           }, [excludedMarkets]);
 
           // Auto-save projects to Firebase when they change
+          const prevProjectIdsRef = React.useRef(null);
           useEffect(() => {
-            if (!loading && projects.length > 0) {
-              saveData(COLLECTIONS.PROJECTS, projects);
+            if (!loading) {
+              const currentIds = projects.map(p => p.id);
+              // Delete any projects that were removed
+              if (prevProjectIdsRef.current) {
+                const removedIds = prevProjectIdsRef.current.filter(id => !currentIds.includes(id));
+                removedIds.forEach(id => deleteData(COLLECTIONS.PROJECTS, id));
+              }
+              prevProjectIdsRef.current = currentIds;
+              if (projects.length > 0) {
+                saveData(COLLECTIONS.PROJECTS, projects);
+              }
             }
           }, [projects]);
 
@@ -16051,9 +16061,8 @@
             setProjects(projects.map(c => c.id === id ? { ...c, ...updatedData } : c));
           };
 
-          const deleteProject = async (id) => {
+          const deleteProject = (id) => {
             if (window.confirm('Are you sure you want to delete this project?')) {
-              await deleteData(COLLECTIONS.PROJECTS, id);
               setProjects(projects.filter(c => c.id !== id));
             }
           };
@@ -16321,12 +16330,9 @@
                               title="Add territory project for this model"
                             >+ Territory</button>
                             <button
-                              onClick={async (e) => {
+                              onClick={(e) => {
                                 e.stopPropagation();
                                 if (window.confirm(`Delete ALL projects for ${model.name}? This cannot be undone.`)) {
-                                  for (const p of modelProjects) {
-                                    await deleteData(COLLECTIONS.PROJECTS, p.id);
-                                  }
                                   setProjects(projects.filter(p => p.modelId !== model.id));
                                 }
                               }}
