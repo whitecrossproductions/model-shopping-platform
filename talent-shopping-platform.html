@@ -13693,6 +13693,18 @@
                                 >
                                   Create Project
                                 </button>
+                                <button
+                                  onClick={() => {
+                                    const allMarkets = [...topMarkets, ...secondaryMarkets];
+                                    setExcludedMarkets({
+                                      ...excludedMarkets,
+                                      [model.id]: allMarkets
+                                    });
+                                  }}
+                                  className="text-xs px-3 py-1 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
+                                >
+                                  🗑️ Remove
+                                </button>
                               </>
                             ) : (
                               <button
