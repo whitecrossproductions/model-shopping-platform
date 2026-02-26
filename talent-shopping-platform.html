@@ -51,7 +51,8 @@
           AGENCIES: 'agencies',
           PROJECTS: 'projects',
           SIGNED_MODELS: 'signedModels',
-          EXCLUDED_MARKETS: 'excludedMarkets'
+          EXCLUDED_MARKETS: 'excludedMarkets',
+          TODOS: 'todos'
         };
 
         const loadData = async (collectionName) => {
@@ -13028,8 +13029,9 @@
           const [agencies, setAgencies] = useState([]);
           const [projects, setProjects] = useState([]);
           const [loading, setLoading] = useState(true);
-          const [excludedMarkets, setExcludedMarkets] = useState({}); // { modelId: ['market1', 'market2'] }
-          const [editingMarkets, setEditingMarkets] = useState(null); // modelId currently being edited
+          const [excludedMarkets, setExcludedMarkets] = useState({});
+          const [editingMarkets, setEditingMarkets] = useState(null);
+          const [todos, setTodos] = useState([]);
 
           // Check authentication state
           useEffect(() => {
@@ -13157,6 +13159,12 @@
                   console.log('✅ Loaded excluded markets for ' + excludedMarketsData.length + ' models');
                 }
 
+                // Load todos from Firebase
+                const todosData = await loadData(COLLECTIONS.TODOS);
+                if (todosData && todosData.length > 0) {
+                  setTodos(todosData);
+                }
+
                 setLoading(false);
               } catch (error) {
                 console.error('Error loading Firebase data:', error);
@@ -13201,6 +13209,13 @@
               saveData(COLLECTIONS.EXCLUDED_MARKETS, excludedMarketsArray);
             }
           }, [excludedMarkets]);
+
+          // Auto-save todos to Firebase
+          useEffect(() => {
+            if (!loading && todos.length > 0) {
+              saveData(COLLECTIONS.TODOS, todos);
+            }
+          }, [todos]);
 
           // Auto-save projects to Firebase when they change
           const prevProjectIdsRef = React.useRef(null);
@@ -13346,6 +13361,7 @@
                       { id: 'models', label: 'Models' },
                       { id: 'agencies', label: 'Agencies' },
                       { id: 'projects', label: 'Projects' },
+                      { id: 'todo', label: '✓ To-Do / Call List' },
                     ].map(tab => (
                       <button
                         key={tab.id}
@@ -13398,14 +13414,183 @@
                   />
                 )}
                 {activeTab === 'projects' && (
-                  <Projects 
+                  <Projects
                     models={models}
                     agencies={agencies}
                     projects={projects}
                     setProjects={setProjects}
                   />
                 )}
+                {activeTab === 'todo' && (
+                  <TodoList
+                    todos={todos}
+                    setTodos={setTodos}
+                    models={models}
+                  />
+                )}
               </main>
+            </div>
+          );
+        }
+
+        // To-Do / Call List Component
+        function TodoList({ todos, setTodos, models }) {
+          const [newText, setNewText] = useState('');
+          const [newType, setNewType] = useState('todo');
+          const [newModelId, setNewModelId] = useState('');
+          const [filterType, setFilterType] = useState('all');
+
+          const addTodo = () => {
+            if (!newText.trim()) return;
+            const todo = {
+              id: Date.now().toString(),
+              text: newText.trim(),
+              type: newType,
+              modelId: newModelId || null,
+              done: false,
+              createdAt: new Date().toISOString()
+            };
+            setTodos([todo, ...todos]);
+            setNewText('');
+            setNewModelId('');
+          };
+
+          const toggleDone = (id) => {
+            setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
+          };
+
+          const deleteTodo = (id) => {
+            setTodos(todos.filter(t => t.id !== id));
+          };
+
+          const filtered = todos.filter(t => filterType === 'all' || t.type === filterType);
+          const pending = filtered.filter(t => !t.done);
+          const done = filtered.filter(t => t.done);
+
+          const typeConfig = {
+            todo: { label: 'To-Do', color: 'bg-blue-100 text-blue-700 border-blue-300' },
+            call: { label: 'Call', color: 'bg-green-100 text-green-700 border-green-300' },
+            waiting: { label: 'Waiting', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+            urgent: { label: 'Urgent', color: 'bg-red-100 text-red-700 border-red-300' },
+          };
+
+          return (
+            <div className="space-y-6">
+              {/* Add new item */}
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <h2 className="text-base font-semibold text-slate-900 mb-3">Add New Item</h2>
+                <div className="flex gap-2 flex-wrap">
+                  <select
+                    value={newType}
+                    onChange={(e) => setNewType(e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="todo">📋 To-Do</option>
+                    <option value="call">📞 Call</option>
+                    <option value="waiting">⏳ Waiting</option>
+                    <option value="urgent">🚨 Urgent</option>
+                  </select>
+                  <select
+                    value={newModelId}
+                    onChange={(e) => setNewModelId(e.target.value)}
+                    className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">No model (general)</option>
+                    {[...models].sort((a,b) => a.name.localeCompare(b.name)).map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={newText}
+                    onChange={(e) => setNewText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addTodo()}
+                    placeholder="Add a note, call, or task..."
+                    className="flex-1 min-w-[200px] px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={addTodo}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm transition-colors"
+                  >+ Add</button>
+                </div>
+              </div>
+
+              {/* Filter */}
+              <div className="flex gap-2">
+                {['all', 'todo', 'call', 'waiting', 'urgent'].map(type => (
+                  <button
+                    key={type}
+                    onClick={() => setFilterType(type)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${filterType === type ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    {type === 'all' ? 'All' : type === 'todo' ? '📋 To-Do' : type === 'call' ? '📞 Calls' : type === 'waiting' ? '⏳ Waiting' : '🚨 Urgent'}
+                    <span className="ml-1 text-xs opacity-70">
+                      {type === 'all' ? todos.filter(t => !t.done).length : todos.filter(t => t.type === type && !t.done).length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Pending items */}
+              {pending.length > 0 && (
+                <div className="space-y-2">
+                  {pending.map(todo => {
+                    const model = models.find(m => m.id === todo.modelId);
+                    const tc = typeConfig[todo.type] || typeConfig.todo;
+                    return (
+                      <div key={todo.id} className="bg-white rounded-lg border border-slate-200 p-3 flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={() => toggleDone(todo.id)}
+                          className="w-4 h-4 rounded cursor-pointer accent-blue-600"
+                        />
+                        <span className={`text-xs px-2 py-0.5 rounded border font-medium flex-shrink-0 ${tc.color}`}>
+                          {todo.type === 'todo' ? '📋' : todo.type === 'call' ? '📞' : todo.type === 'waiting' ? '⏳' : '🚨'} {tc.label}
+                        </span>
+                        {model && (
+                          <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full flex-shrink-0">{model.name}</span>
+                        )}
+                        <span className="flex-1 text-sm text-slate-800">{todo.text}</span>
+                        <span className="text-xs text-slate-400 flex-shrink-0">{new Date(todo.createdAt).toLocaleDateString()}</span>
+                        <button onClick={() => deleteTodo(todo.id)} className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0">✕</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {pending.length === 0 && (
+                <div className="bg-white rounded-lg border border-slate-200 p-8 text-center text-slate-400">
+                  <p className="text-2xl mb-2">✓</p>
+                  <p>Nothing pending! Add a task above.</p>
+                </div>
+              )}
+
+              {/* Done items */}
+              {done.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-slate-400 mb-2">Completed ({done.length})</h3>
+                  <div className="space-y-2">
+                    {done.map(todo => {
+                      const model = models.find(m => m.id === todo.modelId);
+                      return (
+                        <div key={todo.id} className="bg-slate-50 rounded-lg border border-slate-100 p-3 flex items-center gap-3 opacity-60">
+                          <input
+                            type="checkbox"
+                            checked={true}
+                            onChange={() => toggleDone(todo.id)}
+                            className="w-4 h-4 rounded cursor-pointer accent-blue-600"
+                          />
+                          {model && <span className="text-xs bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full flex-shrink-0">{model.name}</span>}
+                          <span className="flex-1 text-sm text-slate-400 line-through">{todo.text}</span>
+                          <button onClick={() => deleteTodo(todo.id)} className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0">✕</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           );
         }
@@ -16109,7 +16294,9 @@
 
               const totalAgencies = modelProjects.reduce((s, p) => s + p.total, 0);
               const totalContacted = modelProjects.reduce((s, p) => s + p.contacted, 0);
-              const modelPriority = model.modelPriority !== undefined ? model.modelPriority : 999999;
+              // Read modelPriority from first project (stored there)
+              const firstProject = projects.find(p => p.modelId === model.id);
+              const modelPriority = firstProject?.modelPriority !== undefined ? firstProject.modelPriority : 999999;
 
               return { model, projects: modelProjects, totalAgencies, totalContacted, modelPriority };
             })
@@ -16117,16 +16304,25 @@
             .sort((a, b) => a.modelPriority - b.modelPriority);
 
           // Model-level drag handlers
+          const setModelPriority = (modelId, priority) => {
+            // Set explicit priority (1,2,3) - store on all projects for that model
+            setProjects(projects.map(p =>
+              p.modelId === modelId ? { ...p, modelPriority: priority } : p
+            ));
+          };
+
           const handleModelDragStart = (e, modelId) => {
             setDraggedModelId(modelId);
             e.dataTransfer.effectAllowed = 'move';
           };
           const handleModelDragOver = (e, modelId) => {
             e.preventDefault();
+            e.stopPropagation();
             setDragOverModelId(modelId);
           };
           const handleModelDrop = (e, targetModelId) => {
             e.preventDefault();
+            e.stopPropagation();
             if (!draggedModelId || draggedModelId === targetModelId) {
               setDraggedModelId(null); setDragOverModelId(null); return;
             }
@@ -16136,11 +16332,14 @@
             const reordered = [...order];
             reordered.splice(fromIdx, 1);
             reordered.splice(toIdx, 0, draggedModelId);
-            setProjects(projects.map(p => {
-              const modelIdx = reordered.indexOf(p.modelId);
-              return modelIdx !== -1 ? { ...p, modelPriority: modelIdx } : p;
-            }));
-            // Also update model priority on the model itself (stored in projects for simplicity)
+            // Assign sequential priorities based on new order
+            const updatedProjects = [...projects];
+            reordered.forEach((modelId, idx) => {
+              updatedProjects.forEach((p, pi) => {
+                if (p.modelId === modelId) updatedProjects[pi] = { ...p, modelPriority: idx * 10 };
+              });
+            });
+            setProjects(updatedProjects);
             setDraggedModelId(null); setDragOverModelId(null);
           };
 
@@ -16336,6 +16535,23 @@
                             )}
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
+                            {/* Priority buttons */}
+                            {[1, 2, 3].map(p => {
+                              const currentPriority = (projects.find(pr => pr.modelId === model.id)?.modelPriority);
+                              const isActive = currentPriority === p;
+                              return (
+                                <button
+                                  key={p}
+                                  onClick={(e) => { e.stopPropagation(); setModelPriority(model.id, isActive ? 999999 : p); }}
+                                  className={`text-xs w-6 h-6 rounded-full font-bold transition-colors flex items-center justify-center ${
+                                    isActive
+                                      ? p === 1 ? 'bg-red-500 text-white' : p === 2 ? 'bg-orange-400 text-white' : 'bg-yellow-400 text-white'
+                                      : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                                  }`}
+                                  title={`Set priority ${p}`}
+                                >{p}</button>
+                              );
+                            })}
                             <button
                               onClick={(e) => { e.stopPropagation(); setShowCreateModal(true); }}
                               className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
