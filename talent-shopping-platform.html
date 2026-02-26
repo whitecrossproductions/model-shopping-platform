@@ -13032,6 +13032,7 @@
           const [excludedMarkets, setExcludedMarkets] = useState({});
           const [editingMarkets, setEditingMarkets] = useState(null);
           const [todos, setTodos] = useState([]);
+          const firebaseUpdatingRef = React.useRef(false);
 
           // Check authentication state
           useEffect(() => {
@@ -13050,158 +13051,118 @@
           }, []);
 
           useEffect(() => {
-            const loadFirebaseData = async () => {
-              setLoading(true);
+            if (!user) return; // Only set up listeners when authenticated
 
-              try {
-                // Load data from Firebase
-                const modelsData = await loadData(COLLECTIONS.MODELS);
-                const agenciesData = await loadData(COLLECTIONS.AGENCIES);
-                const projectsData = await loadData(COLLECTIONS.PROJECTS);
+            const unsubscribers = [];
+            let collectionsLoaded = 0;
+            const TOTAL_COLLECTIONS = 5;
 
-
-                console.log(`✅ Loaded from Firebase: ${modelsData.length} models, ${agenciesData.length} agencies, ${projectsData.length} projects`);
-
-                // Migrate old statuses to new system
-                const migratedProjects = (projectsData || []).map(project => {
-                  const migratedAgencies = project.agencies.map(agency => {
-                    const oldStatus = agency.status;
-                    const newStatus = STATUS_MIGRATION_MAP[oldStatus] || oldStatus;
-                    const needsMigration = STATUS_MIGRATION_MAP[oldStatus];
-
-                    if (needsMigration) {
-                      console.log(`Migrating status: ${oldStatus} → ${newStatus}`);
-                      return {
-                        ...agency,
-                        status: newStatus,
-                        statusUpdatedAt: agency.contactedDate || new Date().toISOString()
-                      };
-                    }
-                    return {
-                      ...agency,
-                      statusUpdatedAt: agency.statusUpdatedAt || agency.contactedDate || new Date().toISOString()
-                    };
-                  });
-
-                  return {
-                    ...project,
-                    agencies: migratedAgencies
-                  };
-                });
-
-                // Migrate territory names
-                const migratedModels = (modelsData || []).map(model => ({
-                  ...model
-                }));
-
-                const migratedAgencies = (agenciesData || []).map(agency => ({
-                  ...agency,
-                  territory: TERRITORY_MIGRATION[agency.territory] || agency.territory
-                }));
-
-                const migratedProjectsWithTerritories = migratedProjects.map(project => ({
-                  ...project,
-                  territory: TERRITORY_MIGRATION[project.territory] || project.territory
-                }));
-
-                // Migrate signed models territories
-                const migratedSignedModels = BASE_SIGNED_MODELS.map(sm => ({
-                  ...sm,
-                  territory: TERRITORY_MIGRATION[sm.territory] || sm.territory
-                }));
-
-                // Check if any territories were actually migrated
-                const agenciesNeedMigration = agenciesData.some(a => TERRITORY_MIGRATION[a.territory]);
-                const projectsNeedMigration = projectsData.some(p => TERRITORY_MIGRATION[p.territory]);
-
-                setModels(migratedModels);
-                setAgencies(migratedAgencies);
-                setProjects(migratedProjectsWithTerritories);
-
-                // Save migrated data back to Firebase if anything changed
-                if (agenciesNeedMigration) {
-                  console.log('🔄 Migrating agency territories to Firebase...');
-                  await saveData(COLLECTIONS.AGENCIES, migratedAgencies);
-                }
-                if (projectsNeedMigration) {
-                  console.log('🔄 Migrating project territories to Firebase...');
-                  await saveData(COLLECTIONS.PROJECTS, migratedProjectsWithTerritories);
-                }
-
-                // Load signed models from Firebase
-                const signedModelsData = await loadData(COLLECTIONS.SIGNED_MODELS);
-                if (signedModelsData && signedModelsData.length > 0) {
-                  // Migrate signed models territories
-                  const migratedSignedModelsData = signedModelsData.map(sm => ({
-                    ...sm,
-                    territory: TERRITORY_MIGRATION[sm.territory] || sm.territory
-                  }));
-
-                  const signedModelsNeedMigration = signedModelsData.some(sm => TERRITORY_MIGRATION[sm.territory]);
-                  if (signedModelsNeedMigration) {
-                    console.log('🔄 Migrating signed models territories to Firebase...');
-                    await saveData(COLLECTIONS.SIGNED_MODELS, migratedSignedModelsData);
-                  }
-
-                  BASE_SIGNED_MODELS.length = 0;
-                  BASE_SIGNED_MODELS.push(...migratedSignedModelsData);
-                  console.log('✅ Loaded ' + signedModelsData.length + ' signed model records from Firebase');
-                }
-
-                // Load excluded markets from Firebase
-                const excludedMarketsData = await loadData(COLLECTIONS.EXCLUDED_MARKETS);
-                if (excludedMarketsData && excludedMarketsData.length > 0) {
-                  const excludedMarketsMap = {};
-                  excludedMarketsData.forEach(item => {
-                    excludedMarketsMap[item.id] = item.markets || [];
-                  });
-                  setExcludedMarkets(excludedMarketsMap);
-                  console.log('✅ Loaded excluded markets for ' + excludedMarketsData.length + ' models');
-                }
-
-                // Load todos from Firebase
-                const todosData = await loadData(COLLECTIONS.TODOS);
-                if (todosData && todosData.length > 0) {
-                  setTodos(todosData);
-                }
-
-                setLoading(false);
-              } catch (error) {
-                console.error('Error loading Firebase data:', error);
-                setLoading(false);
-              }
+            const setFromFirebase = (setter, data) => {
+              firebaseUpdatingRef.current = true;
+              setter(data);
+              setTimeout(() => { firebaseUpdatingRef.current = false; }, 100);
             };
 
-            // Wait for Firebase to be ready
-            if (window.firebaseReady) {
-              loadFirebaseData();
-            } else {
-              const checkFirebase = setInterval(() => {
-                if (window.firebaseReady) {
-                  clearInterval(checkFirebase);
-                  loadFirebaseData();
-                }
-              }, 100);
-            }
-          }, []);
+            const markLoaded = () => {
+              collectionsLoaded++;
+              if (collectionsLoaded >= TOTAL_COLLECTIONS) setLoading(false);
+            };
 
-          // Auto-save models to Firebase when they change
+            const setupListeners = () => {
+              if (!window.firebaseReady) {
+                const interval = setInterval(() => {
+                  if (window.firebaseReady) { clearInterval(interval); setupListeners(); }
+                }, 100);
+                return;
+              }
+
+              const { collection, onSnapshot } = window.firebaseModules;
+              const db = window.firebaseDB;
+
+              // Models
+              unsubscribers.push(onSnapshot(collection(db, COLLECTIONS.MODELS), snap => {
+                const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+                setFromFirebase(setModels, data);
+                markLoaded();
+                console.log(`✅ Models synced: ${data.length}`);
+              }, err => { console.error('Models listener error:', err); markLoaded(); }));
+
+              // Agencies
+              unsubscribers.push(onSnapshot(collection(db, COLLECTIONS.AGENCIES), snap => {
+                const data = snap.docs.map(d => ({ ...d.data(), id: d.id })).map(a => ({
+                  ...a, territory: TERRITORY_MIGRATION[a.territory] || a.territory
+                }));
+                setFromFirebase(setAgencies, data);
+                markLoaded();
+                console.log(`✅ Agencies synced: ${data.length}`);
+              }, err => { console.error('Agencies listener error:', err); markLoaded(); }));
+
+              // Projects
+              unsubscribers.push(onSnapshot(collection(db, COLLECTIONS.PROJECTS), snap => {
+                const data = snap.docs.map(d => ({ ...d.data(), id: d.id })).map(project => ({
+                  ...project,
+                  territory: TERRITORY_MIGRATION[project.territory] || project.territory,
+                  agencies: (project.agencies || []).map(agency => ({
+                    ...agency,
+                    status: STATUS_MIGRATION_MAP[agency.status] || agency.status,
+                    statusUpdatedAt: agency.statusUpdatedAt || agency.contactedDate || new Date().toISOString()
+                  }))
+                }));
+                setFromFirebase(setProjects, data);
+                markLoaded();
+                console.log(`✅ Projects synced: ${data.length}`);
+              }, err => { console.error('Projects listener error:', err); markLoaded(); }));
+
+              // Excluded Markets
+              unsubscribers.push(onSnapshot(collection(db, COLLECTIONS.EXCLUDED_MARKETS), snap => {
+                const map = {};
+                snap.docs.forEach(d => { const item = { ...d.data(), id: d.id }; map[item.id] = item.markets || []; });
+                setFromFirebase(setExcludedMarkets, map);
+                markLoaded();
+              }, err => { console.error('ExcludedMarkets listener error:', err); markLoaded(); }));
+
+              // Todos
+              unsubscribers.push(onSnapshot(collection(db, COLLECTIONS.TODOS), snap => {
+                const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+                setFromFirebase(setTodos, data);
+                markLoaded();
+              }, err => { console.error('Todos listener error:', err); markLoaded(); }));
+
+              // SignedModels (updates module-level array, no React state)
+              unsubscribers.push(onSnapshot(collection(db, COLLECTIONS.SIGNED_MODELS), snap => {
+                if (!snap.empty) {
+                  const data = snap.docs.map(d => ({ ...d.data(), id: d.id })).map(sm => ({
+                    ...sm, territory: TERRITORY_MIGRATION[sm.territory] || sm.territory
+                  }));
+                  BASE_SIGNED_MODELS.length = 0;
+                  BASE_SIGNED_MODELS.push(...data);
+                  console.log(`✅ SignedModels synced: ${data.length}`);
+                }
+              }));
+            };
+
+            setupListeners();
+
+            return () => { unsubscribers.forEach(u => { if (typeof u === 'function') u(); }); };
+          }, [user]);
+
+          // Auto-save models to Firebase when they change (skip if update came from Firebase)
           useEffect(() => {
-            if (!loading && models.length > 0) {
+            if (!loading && !firebaseUpdatingRef.current && models.length > 0) {
               saveData(COLLECTIONS.MODELS, models);
             }
           }, [models]);
 
           // Auto-save agencies to Firebase when they change
           useEffect(() => {
-            if (!loading && agencies.length > 0) {
+            if (!loading && !firebaseUpdatingRef.current && agencies.length > 0) {
               saveData(COLLECTIONS.AGENCIES, agencies);
             }
           }, [agencies]);
 
           // Auto-save excluded markets to Firebase when they change
           useEffect(() => {
-            if (!loading && Object.keys(excludedMarkets).length > 0) {
+            if (!loading && !firebaseUpdatingRef.current && Object.keys(excludedMarkets).length > 0) {
               const excludedMarketsArray = Object.entries(excludedMarkets).map(([id, markets]) => ({
                 id,
                 markets
@@ -13212,7 +13173,7 @@
 
           // Auto-save todos to Firebase
           useEffect(() => {
-            if (!loading && todos.length > 0) {
+            if (!loading && !firebaseUpdatingRef.current && todos.length > 0) {
               saveData(COLLECTIONS.TODOS, todos);
             }
           }, [todos]);
@@ -13222,15 +13183,18 @@
           useEffect(() => {
             if (!loading) {
               const currentIds = projects.map(p => p.id);
-              // Delete any projects that were removed
-              if (prevProjectIdsRef.current) {
-                const removedIds = prevProjectIdsRef.current.filter(id => !currentIds.includes(id));
-                removedIds.forEach(id => deleteData(COLLECTIONS.PROJECTS, id));
+              if (!firebaseUpdatingRef.current) {
+                // Delete any projects that were removed by the user
+                if (prevProjectIdsRef.current) {
+                  const removedIds = prevProjectIdsRef.current.filter(id => !currentIds.includes(id));
+                  removedIds.forEach(id => deleteData(COLLECTIONS.PROJECTS, id));
+                }
+                if (projects.length > 0) {
+                  saveData(COLLECTIONS.PROJECTS, projects);
+                }
               }
+              // Always update tracked IDs regardless of source
               prevProjectIdsRef.current = currentIds;
-              if (projects.length > 0) {
-                saveData(COLLECTIONS.PROJECTS, projects);
-              }
             }
           }, [projects]);
 
