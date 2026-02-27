@@ -13060,7 +13060,7 @@
             const setFromFirebase = (setter, data) => {
               firebaseUpdatingRef.current = true;
               setter(data);
-              setTimeout(() => { firebaseUpdatingRef.current = false; }, 100);
+              setTimeout(() => { firebaseUpdatingRef.current = false; }, 2000);
             };
 
             const markLoaded = () => {
@@ -13228,23 +13228,9 @@
             return Object.values(grouped);
           }
 
-          useEffect(() => {
-            if (!loading && models.length > 0) {
-              saveData(COLLECTIONS.MODELS, models);
-            }
-          }, [models, loading]);
-
-          useEffect(() => {
-            if (!loading && agencies.length > 0) {
-              saveData(COLLECTIONS.AGENCIES, agencies);
-            }
-          }, [agencies, loading]);
-
-          useEffect(() => {
-            if (!loading && projects.length > 0) {
-              saveData(COLLECTIONS.PROJECTS, projects);
-            }
-          }, [projects, loading]);
+          // NOTE: Duplicate auto-saves removed — the guarded versions above (with
+          // firebaseUpdatingRef checks) handle all saves correctly without overwriting
+          // Firebase data that was just loaded from onSnapshot.
 
           // Show auth loading spinner
           if (authLoading) {
