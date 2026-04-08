@@ -15025,12 +15025,12 @@
                               </td>
                               <td className="px-6 py-4 text-sm">
                                 <span className="font-medium text-purple-600">
-                                  {mergedAgency.divisions.reduce((sum, d) => sum + (d.rankedWomen || 0), 0)}
+                                  {(mergedAgency.divisions.find(d => d.genderDivision === 'FEMALE') || mergedAgency.divisions[0])?.rankedWomen || 0}
                                 </span>
                               </td>
                               <td className="px-6 py-4 text-sm">
                                 <span className="font-medium text-blue-600">
-                                  {mergedAgency.divisions.reduce((sum, d) => sum + (d.rankedMen || 0), 0)}
+                                  {(mergedAgency.divisions.find(d => d.genderDivision === 'MALE') || mergedAgency.divisions[0])?.rankedMen || 0}
                                 </span>
                               </td>
                               <td className="px-6 py-4">
@@ -15181,8 +15181,9 @@
 
           const updateAgencyRanking = (agencyId, gender, ranking) => {
             const field = gender === 'women' ? 'rankedWomen' : 'rankedMen';
+            const source = agencies.find(a => a.id === agencyId);
             setAgencies(agencies.map(a =>
-              a.id === agencyId ? {
+              (a.id === agencyId || (source && a.name === source.name && a.territory === source.territory)) ? {
                 ...a,
                 [field]: parseInt(ranking) || 0,
                 lastUpdated: new Date().toISOString()
@@ -15665,6 +15666,16 @@
           const [agencyName, setAgencyName] = useState(agency.name);
           const [territory, setTerritory] = useState(agency.territory);
           const [tier, setTier] = useState(agency.tier);
+          const [rankedWomen, setRankedWomen] = useState(() => {
+            const femalDiv = existingDivisions.find(d => d.genderDivision === 'FEMALE');
+            const any = existingDivisions[0];
+            return (femalDiv || any)?.rankedWomen || 0;
+          });
+          const [rankedMen, setRankedMen] = useState(() => {
+            const maleDiv = existingDivisions.find(d => d.genderDivision === 'MALE');
+            const any = existingDivisions[0];
+            return (maleDiv || any)?.rankedMen || 0;
+          });
           const [activeDivisions, setActiveDivisions] = useState(() => {
             const hasFemale = existingDivisions.some(d => d.genderDivision === 'FEMALE');
             const hasMale = existingDivisions.some(d => d.genderDivision === 'MALE');
@@ -15747,7 +15758,9 @@
                 ...div,
                 name: agencyName,
                 territory,
-                tier
+                tier,
+                rankedWomen,
+                rankedMen
               }));
 
             if (finalDivisions.length > 0 && agencyName) {
@@ -15813,6 +15826,34 @@
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </select>
+                    </div>
+                  </div>
+
+                  {/* Agency-level Rankings */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        ♀️ Ranked Women
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={rankedWomen}
+                        onChange={(e) => setRankedWomen(parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        ♂️ Ranked Men
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={rankedMen}
+                        onChange={(e) => setRankedMen(parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
                     </div>
                   </div>
 
@@ -15885,34 +15926,6 @@
                       {/* Division-specific fields */}
                       {currentDivision && (
                         <div className="space-y-4">
-                          <div className="grid md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-sm font-medium text-slate-700 mb-1">
-                                ♀️ Ranked Women
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={currentDivision.rankedWomen || 0}
-                                onChange={(e) => updateDivision(selectedTab, 'rankedWomen', parseInt(e.target.value) || 0)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-sm font-medium text-slate-700 mb-1">
-                                ♂️ Ranked Men
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={currentDivision.rankedMen || 0}
-                                onChange={(e) => updateDivision(selectedTab, 'rankedMen', parseInt(e.target.value) || 0)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                            </div>
-                          </div>
-
                           <div>
                             <div className="flex items-center justify-between mb-3">
                               <h3 className="font-semibold text-slate-900">👥 Contacts</h3>
@@ -17411,16 +17424,20 @@
             );
           };
 
+          const model = models.find(m => m.id === selectedModel);
+
           const availableAgencies = (() => {
             if (!selectedModel || !selectedTerritory) return [];
 
             const modelGender = model?.gender?.toUpperCase();
             const preferredDivision = modelGender === 'MALE' ? 'MALE' : 'FEMALE';
 
-            // First filter agencies by territory and tier
+            // Filter strictly by territory, gender division, and tier
             const filtered = agencies.filter(agency => {
               if (agency.territory !== selectedTerritory) return false;
-              if (!selectedTiers.includes(agency.tier)) return false;
+              if (agency.genderDivision !== preferredDivision) return false;
+              // Include agencies with no tier always; otherwise apply tier filter
+              if (agency.tier && !selectedTiers.includes(agency.tier)) return false;
 
               // Check if this agency is already in a project for this model+territory
               const alreadyInProject = projects.some(c =>
@@ -17432,25 +17449,10 @@
               return !alreadyInProject;
             });
 
-            // Deduplicate by name+territory, preferring the matching gender division
-            const deduped = {};
-            filtered.forEach(agency => {
-              const key = `${agency.name}-${agency.territory}`;
-              if (!deduped[key]) {
-                deduped[key] = agency;
-              } else {
-                // If we already have this agency, prefer the one matching model gender
-                if (agency.genderDivision === preferredDivision &&
-                    deduped[key].genderDivision !== preferredDivision) {
-                  deduped[key] = agency;
-                }
-              }
-            });
-
             // Sort by tier first (Top -> Mid -> Low), then alphabetically within each tier
-            return Object.values(deduped).sort((a, b) => {
+            return filtered.sort((a, b) => {
               const tierOrder = { 'Top Tier': 1, 'Mid Tier': 2, 'Low Tier': 3 };
-              const tierDiff = tierOrder[a.tier] - tierOrder[b.tier];
+              const tierDiff = (tierOrder[a.tier] || 4) - (tierOrder[b.tier] || 4);
               if (tierDiff !== 0) return tierDiff;
               return a.name.localeCompare(b.name);
             });
@@ -17482,8 +17484,6 @@
               onClose();
             }
           };
-
-          const model = models.find(m => m.id === selectedModel);
 
           // Check if model is already signed in this territory
           const signedWarning = selectedModel && selectedTerritory ? (() => {
@@ -17775,10 +17775,12 @@
             const modelGender = model?.gender?.toUpperCase();
             const preferredDivision = modelGender === 'MALE' ? 'MALE' : 'FEMALE';
 
-            // First filter agencies by territory and tier
+            // Filter strictly by territory, gender division, and tier
             const filtered = agencies.filter(agency => {
               if (agency.territory !== selectedTerritory) return false;
-              if (!selectedTiers.includes(agency.tier)) return false;
+              if (agency.genderDivision !== preferredDivision) return false;
+              // Include agencies with no tier always; otherwise apply tier filter
+              if (agency.tier && !selectedTiers.includes(agency.tier)) return false;
 
               // Include agencies already in THIS project OR not in any project for this model+territory
               const alreadyInThisProject = project.agencies.some(a => a.agencyId === agency.id);
@@ -17792,25 +17794,10 @@
               return alreadyInThisProject || !alreadyInOtherProject;
             });
 
-            // Deduplicate by name+territory, preferring the matching gender division
-            const deduped = {};
-            filtered.forEach(agency => {
-              const key = `${agency.name}-${agency.territory}`;
-              if (!deduped[key]) {
-                deduped[key] = agency;
-              } else {
-                // If we already have this agency, prefer the one matching model gender
-                if (agency.genderDivision === preferredDivision &&
-                    deduped[key].genderDivision !== preferredDivision) {
-                  deduped[key] = agency;
-                }
-              }
-            });
-
             // Sort by tier first (Top -> Mid -> Low), then alphabetically within each tier
-            return Object.values(deduped).sort((a, b) => {
+            return filtered.sort((a, b) => {
               const tierOrder = { 'Top Tier': 1, 'Mid Tier': 2, 'Low Tier': 3 };
-              const tierDiff = tierOrder[a.tier] - tierOrder[b.tier];
+              const tierDiff = (tierOrder[a.tier] || 4) - (tierOrder[b.tier] || 4);
               if (tierDiff !== 0) return tierDiff;
               return a.name.localeCompare(b.name);
             });
