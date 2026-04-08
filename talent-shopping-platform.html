@@ -14807,7 +14807,8 @@
               );
             const matchesTerritory = filterTerritory === 'all' || mergedAgency.territory === filterTerritory;
             const matchesTier = filterTier === 'all' || mergedAgency.tier === `${filterTier} Tier`;
-            return matchesSearch && matchesTerritory && matchesTier;
+            const matchesGenderView = mergedAgency.divisions.some(d => d.genderDivision === globalGenderView);
+            return matchesSearch && matchesTerritory && matchesTier && matchesGenderView;
           });
 
           const addAgency = (agencyData) => {
