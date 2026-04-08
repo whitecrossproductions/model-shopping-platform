@@ -14770,7 +14770,7 @@
             return acc;
           }, {});
 
-          const mergedAgenciesList = Object.values(mergedAgencies);
+          const mergedAgenciesList = Object.values(mergedAgencies).sort((a, b) => a.name.localeCompare(b.name));
 
           // Calculate tier counts based on current filters (search + territory only)
           const getFilteredAgenciesForCounting = () => {
