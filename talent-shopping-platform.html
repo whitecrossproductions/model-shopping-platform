@@ -14814,9 +14814,11 @@
           const addAgency = (agencyData) => {
             const newAgency = {
               id: Date.now().toString(),
-              ...agencyData
+              ...agencyData,
+              lastUpdated: new Date().toISOString()
             };
             setAgencies([...agencies, newAgency]);
+            saveData(COLLECTIONS.AGENCIES, newAgency);
           };
 
           const updateAgency = (id, updatedData) => {
