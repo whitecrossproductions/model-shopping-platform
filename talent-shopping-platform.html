@@ -52,7 +52,8 @@
           PROJECTS: 'projects',
           SIGNED_MODELS: 'signedModels',
           EXCLUDED_MARKETS: 'excludedMarkets',
-          TODOS: 'todos'
+          TODOS: 'todos',
+          CAMPAIGNS: 'campaigns'
         };
 
         const loadData = async (collectionName) => {
@@ -13032,6 +13033,7 @@
           const [excludedMarkets, setExcludedMarkets] = useState({});
           const [editingMarkets, setEditingMarkets] = useState(null);
           const [todos, setTodos] = useState([]);
+          const [campaigns, setCampaigns] = useState([]);
           const firebaseUpdatingRef = React.useRef(false);
 
           // Check authentication state
@@ -13127,6 +13129,12 @@
                 setFromFirebase(setTodos, data);
                 markLoaded();
               }, err => { console.error('Todos listener error:', err); markLoaded(); }));
+
+              // Campaigns
+              unsubscribers.push(onSnapshot(collection(db, COLLECTIONS.CAMPAIGNS), snap => {
+                const data = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+                setFromFirebase(setCampaigns, data);
+              }, err => { console.error('Campaigns listener error:', err); }));
 
               // SignedModels (updates module-level array, no React state)
               unsubscribers.push(onSnapshot(collection(db, COLLECTIONS.SIGNED_MODELS), snap => {
@@ -13311,6 +13319,7 @@
                       { id: 'models', label: 'Models' },
                       { id: 'agencies', label: 'Agencies' },
                       { id: 'projects', label: 'Projects' },
+                      { id: 'campaigns', label: '📦 Campaigns' },
                       { id: 'todo', label: '✓ To-Do / Call List' },
                     ].map(tab => (
                       <button
@@ -13369,6 +13378,14 @@
                     agencies={agencies}
                     projects={projects}
                     setProjects={setProjects}
+                  />
+                )}
+                {activeTab === 'campaigns' && (
+                  <Campaigns
+                    campaigns={campaigns}
+                    setCampaigns={setCampaigns}
+                    models={models}
+                    agencies={agencies}
                   />
                 )}
                 {activeTab === 'todo' && (
@@ -18124,6 +18141,475 @@
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          );
+        }
+
+        // ============================================================
+        // CAMPAIGNS MODULE
+        // ============================================================
+
+        function Campaigns({ campaigns, setCampaigns, models, agencies }) {
+          const [showCreateModal, setShowCreateModal] = useState(false);
+          const [activeCampaign, setActiveCampaign] = useState(null);
+
+          const handleCreate = (campaignData) => {
+            const newCampaign = { id: Date.now().toString(), ...campaignData, createdAt: new Date().toISOString() };
+            setCampaigns(prev => [...prev, newCampaign]);
+            saveData(COLLECTIONS.CAMPAIGNS, newCampaign);
+            setShowCreateModal(false);
+            setActiveCampaign(newCampaign);
+          };
+
+          const handleUpdate = (updatedCampaign) => {
+            setCampaigns(prev => prev.map(c => c.id === updatedCampaign.id ? updatedCampaign : c));
+            saveData(COLLECTIONS.CAMPAIGNS, updatedCampaign);
+            setActiveCampaign(updatedCampaign);
+          };
+
+          const handleDelete = (id) => {
+            if (window.confirm('Delete this campaign? This cannot be undone.')) {
+              setCampaigns(prev => prev.filter(c => c.id !== id));
+              deleteData(COLLECTIONS.CAMPAIGNS, id);
+              setActiveCampaign(null);
+            }
+          };
+
+          if (activeCampaign) {
+            const freshCampaign = campaigns.find(c => c.id === activeCampaign.id) || activeCampaign;
+            return (
+              <CampaignDetailView
+                campaign={freshCampaign}
+                models={models}
+                agencies={agencies}
+                onUpdate={handleUpdate}
+                onBack={() => setActiveCampaign(null)}
+                onDelete={() => handleDelete(freshCampaign.id)}
+              />
+            );
+          }
+
+          const sortedCampaigns = [...campaigns].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+          return (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">Campaigns</h2>
+                  <p className="text-slate-500 mt-1">Bulk mediaslide packages sent to agencies by territory</p>
+                </div>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  + New Campaign
+                </button>
+              </div>
+
+              {sortedCampaigns.length === 0 ? (
+                <div className="text-center py-20 text-slate-400">
+                  <div className="text-6xl mb-4">📦</div>
+                  <p className="text-lg font-medium text-slate-500">No campaigns yet</p>
+                  <p className="text-sm mt-1">Create a campaign to bulk shop multiple models to agencies in a territory</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {sortedCampaigns.map(campaign => {
+                    const totalPairs = (campaign.modelIds || []).length * (campaign.agencyNames || []).length;
+                    const statuses = Object.values(campaign.statuses || {});
+                    const contacted = statuses.filter(s => s.status !== 'not-contacted').length;
+                    const responding = statuses.filter(s => ['meeting-scheduled', 'met-waiting', 'wants-to-sign', 'signed'].includes(s.status)).length;
+                    const passed = statuses.filter(s => s.status === 'passed').length;
+                    return (
+                      <div
+                        key={campaign.id}
+                        className="bg-white rounded-xl border border-slate-200 p-5 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer"
+                        onClick={() => setActiveCampaign(campaign)}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-1 flex-wrap">
+                              <h3 className="font-semibold text-slate-900 text-lg">{campaign.name}</h3>
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-medium">{campaign.territory}</span>
+                            </div>
+                            <div className="text-sm text-slate-500 mb-3">
+                              {(campaign.modelIds || []).length} models · {(campaign.agencyNames || []).length} agencies
+                              {campaign.sentDate && <span> · Sent: {campaign.sentDate}</span>}
+                            </div>
+                            {campaign.mediaslideLink && (
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="text-xs text-slate-400">🔗</span>
+                                <span className="text-xs text-blue-600 truncate">{campaign.mediaslideLink}</span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(campaign.mediaslideLink); }}
+                                  className="text-xs px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded transition-colors shrink-0"
+                                >Copy</button>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-4 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <div className="h-1.5 bg-slate-200 rounded-full w-28 overflow-hidden">
+                                  <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: totalPairs > 0 ? `${(contacted / totalPairs) * 100}%` : '0%' }} />
+                                </div>
+                                <span className="text-xs text-slate-500">{contacted}/{totalPairs} contacted</span>
+                              </div>
+                              {responding > 0 && <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 rounded-full font-medium">{responding} responding</span>}
+                              {passed > 0 && <span className="text-xs px-2 py-0.5 bg-red-50 text-red-700 rounded-full font-medium">{passed} passed</span>}
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDelete(campaign.id); }}
+                            className="text-slate-300 hover:text-red-500 transition-colors p-1 shrink-0"
+                          >🗑️</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {showCreateModal && (
+                <CampaignCreateModal
+                  models={models}
+                  agencies={agencies}
+                  onClose={() => setShowCreateModal(false)}
+                  onSave={handleCreate}
+                />
+              )}
+            </div>
+          );
+        }
+
+        function CampaignCreateModal({ models, agencies, onClose, onSave }) {
+          const [step, setStep] = useState(1);
+          const [name, setName] = useState('');
+          const [territory, setTerritory] = useState('');
+          const [mediaslideLink, setMediaslideLink] = useState('');
+          const [sentDate, setSentDate] = useState(new Date().toISOString().split('T')[0]);
+          const [notes, setNotes] = useState('');
+          const [selectedModelIds, setSelectedModelIds] = useState([]);
+          const [selectedAgencyNames, setSelectedAgencyNames] = useState([]);
+          const [modelFilter, setModelFilter] = useState('unsigned');
+          const [modelSearch, setModelSearch] = useState('');
+          const [genderFilter, setGenderFilter] = useState('all');
+
+          const allTerritories = [...new Set(agencies.map(a => a.territory))].filter(Boolean).sort();
+
+          const filteredModels = territory ? models.filter(m => {
+            if (modelSearch && !m.name.toLowerCase().includes(modelSearch.toLowerCase())) return false;
+            if (genderFilter === 'women' && m.gender === 'male') return false;
+            if (genderFilter === 'men' && m.gender !== 'male') return false;
+            if (modelFilter === 'unsigned') {
+              const isSigned = BASE_SIGNED_MODELS.some(sm =>
+                sm.modelName.toUpperCase().trim() === m.name.toUpperCase().trim() &&
+                sm.territory === territory && sm.status === 'signed'
+              );
+              return !isSigned;
+            }
+            return true;
+          }).sort((a, b) => a.name.localeCompare(b.name)) : [];
+
+          const territoryAgencyGroups = (() => {
+            if (!territory) return {};
+            const byName = {};
+            agencies.filter(a => a.territory === territory).forEach(a => {
+              if (!byName[a.name]) byName[a.name] = { name: a.name, tier: a.tier || 'Low Tier' };
+            });
+            const groups = { 'Top Tier': [], 'Mid Tier': [], 'Low Tier': [] };
+            Object.values(byName).sort((a, b) => {
+              const order = { 'Top Tier': 1, 'Mid Tier': 2, 'Low Tier': 3 };
+              return ((order[a.tier] || 4) - (order[b.tier] || 4)) || a.name.localeCompare(b.name);
+            }).forEach(a => { (groups[a.tier] || groups['Low Tier']).push(a); });
+            return groups;
+          })();
+
+          const toggleModel = (id) => setSelectedModelIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+          const toggleAgency = (name) => setSelectedAgencyNames(prev => prev.includes(name) ? prev.filter(x => x !== name) : [...prev, name]);
+          const selectTierAgencies = (tier) => {
+            const names = (territoryAgencyGroups[tier] || []).map(a => a.name);
+            const allSel = names.every(n => selectedAgencyNames.includes(n));
+            setSelectedAgencyNames(prev => allSel ? prev.filter(n => !names.includes(n)) : [...new Set([...prev, ...names])]);
+          };
+
+          const handleCreate = () => {
+            const statuses = {};
+            selectedModelIds.forEach(mid => {
+              selectedAgencyNames.forEach(aName => {
+                statuses[`${mid}__${aName}`] = { status: 'not-contacted', updatedAt: new Date().toISOString() };
+              });
+            });
+            onSave({ name: name.trim(), territory, mediaslideLink: mediaslideLink.trim(), sentDate, notes: notes.trim(), modelIds: selectedModelIds, agencyNames: selectedAgencyNames, statuses });
+          };
+
+          const stepLabels = ['Details', 'Models', 'Agencies'];
+
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+                <div className="p-6 border-b border-slate-200 shrink-0">
+                  <h2 className="text-xl font-semibold text-slate-900 mb-4">New Campaign</h2>
+                  <div className="flex items-center gap-2">
+                    {stepLabels.map((label, i) => {
+                      const s = i + 1;
+                      return (
+                        <React.Fragment key={s}>
+                          <div className={`flex items-center gap-1.5 text-sm font-medium ${step === s ? 'text-blue-600' : step > s ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${step === s ? 'bg-blue-600 text-white' : step > s ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                              {step > s ? '✓' : s}
+                            </div>
+                            {label}
+                          </div>
+                          {s < 3 && <div className="flex-1 h-px bg-slate-200" />}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                  {step === 1 && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Campaign Name *</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} autoFocus
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g. Milan Package – May 2026" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Territory *</label>
+                        <select value={territory} onChange={e => { setTerritory(e.target.value); setSelectedModelIds([]); setSelectedAgencyNames([]); }}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="">Select territory...</option>
+                          {allTerritories.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Mediaslide Link</label>
+                        <input type="url" value={mediaslideLink} onChange={e => setMediaslideLink(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="https://..." />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Sent Date</label>
+                        <input type="date" value={sentDate} onChange={e => setSentDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Any notes about this campaign..." />
+                      </div>
+                    </div>
+                  )}
+
+                  {step === 2 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-4 flex-wrap">
+                        <input type="text" value={modelSearch} onChange={e => setModelSearch(e.target.value)} placeholder="Search models..."
+                          className="flex-1 min-w-32 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        <select value={modelFilter} onChange={e => setModelFilter(e.target.value)}
+                          className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="unsigned">Not signed in {territory}</option>
+                          <option value="all">All models</option>
+                        </select>
+                        <select value={genderFilter} onChange={e => setGenderFilter(e.target.value)}
+                          className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                          <option value="all">All genders</option>
+                          <option value="women">Women</option>
+                          <option value="men">Men</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-slate-500">{filteredModels.length} shown · <span className="font-medium text-slate-700">{selectedModelIds.length} selected</span></span>
+                        <div className="flex gap-3">
+                          <button onClick={() => setSelectedModelIds(filteredModels.map(m => m.id))} className="text-xs text-blue-600 hover:underline">Select all</button>
+                          <button onClick={() => setSelectedModelIds([])} className="text-xs text-slate-400 hover:underline">Clear</button>
+                        </div>
+                      </div>
+                      <div className="space-y-0.5 max-h-72 overflow-y-auto border border-slate-200 rounded-lg p-2">
+                        {filteredModels.length === 0 ? (
+                          <p className="text-sm text-slate-400 text-center py-8">No models found</p>
+                        ) : filteredModels.map(model => (
+                          <label key={model.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={selectedModelIds.includes(model.id)} onChange={() => toggleModel(model.id)} className="rounded" />
+                            <span className="text-sm font-medium text-slate-800 flex-1">{model.name}</span>
+                            <span className="text-xs text-slate-400">{model.gender === 'male' ? 'Men' : 'Women'}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {step === 3 && (
+                    <div className="space-y-5">
+                      {Object.entries(territoryAgencyGroups).map(([tier, tierAgencies]) => {
+                        if (tierAgencies.length === 0) return null;
+                        const allSel = tierAgencies.every(a => selectedAgencyNames.includes(a.name));
+                        const tierColor = tier === 'Top Tier' ? 'text-amber-600' : tier === 'Mid Tier' ? 'text-blue-600' : 'text-slate-500';
+                        return (
+                          <div key={tier}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className={`text-xs font-bold uppercase tracking-wide ${tierColor}`}>{tier}</span>
+                              <button onClick={() => selectTierAgencies(tier)} className="text-xs text-blue-600 hover:underline">
+                                {allSel ? 'Deselect all' : 'Select all'}
+                              </button>
+                            </div>
+                            <div className="space-y-0.5">
+                              {tierAgencies.map(agency => (
+                                <label key={agency.name} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                                  <input type="checkbox" checked={selectedAgencyNames.includes(agency.name)} onChange={() => toggleAgency(agency.name)} className="rounded" />
+                                  <span className="text-sm font-medium text-slate-800">{agency.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-6 border-t border-slate-200 flex gap-3 shrink-0">
+                  <button onClick={step === 1 ? onClose : () => setStep(s => s - 1)}
+                    className="flex-1 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">
+                    {step === 1 ? 'Cancel' : '← Back'}
+                  </button>
+                  {step < 3 ? (
+                    <button onClick={() => setStep(s => s + 1)} disabled={step === 1 ? !(name.trim() && territory) : selectedModelIds.length === 0}
+                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed">
+                      Next →
+                    </button>
+                  ) : (
+                    <button onClick={handleCreate} disabled={selectedAgencyNames.length === 0}
+                      className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed font-medium">
+                      Create Campaign ({selectedModelIds.length} × {selectedAgencyNames.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        function CampaignDetailView({ campaign, models, agencies, onUpdate, onBack, onDelete }) {
+          const [copied, setCopied] = useState(false);
+
+          const campaignModels = (campaign.modelIds || [])
+            .map(id => models.find(m => m.id === id))
+            .filter(Boolean)
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+          const agencyNames = campaign.agencyNames || [];
+
+          const getStatus = (modelId, agencyName) =>
+            campaign.statuses?.[`${modelId}__${agencyName}`]?.status || 'not-contacted';
+
+          const updateStatus = (modelId, agencyName, newStatus) => {
+            const key = `${modelId}__${agencyName}`;
+            const updated = { ...campaign, statuses: { ...campaign.statuses, [key]: { status: newStatus, updatedAt: new Date().toISOString() } } };
+            onUpdate(updated);
+          };
+
+          const copyLink = () => { navigator.clipboard.writeText(campaign.mediaslideLink); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+
+          const allStatuses = Object.values(campaign.statuses || {}).map(s => s.status);
+          const statusCounts = AGENCY_STATUSES.reduce((acc, s) => ({ ...acc, [s.id]: 0 }), {});
+          allStatuses.forEach(s => { if (statusCounts[s] !== undefined) statusCounts[s]++; });
+
+          const cellClass = (status) => ({
+            'not-contacted': 'bg-slate-50 text-slate-500',
+            'shopped': 'bg-blue-50 text-blue-700',
+            'meeting-scheduled': 'bg-yellow-50 text-yellow-700',
+            'met-waiting': 'bg-orange-50 text-orange-700',
+            'passed': 'bg-red-50 text-red-600',
+            'wants-to-sign': 'bg-green-50 text-green-700',
+            'signed': 'bg-emerald-50 text-emerald-700'
+          })[status] || 'bg-slate-50 text-slate-500';
+
+          return (
+            <div className="space-y-6">
+              <div className="flex items-start gap-3">
+                <button onClick={onBack} className="mt-1 px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors shrink-0">← Back</button>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h2 className="text-2xl font-bold text-slate-900">{campaign.name}</h2>
+                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-sm">{campaign.territory}</span>
+                    {campaign.sentDate && <span className="text-sm text-slate-400">Sent: {campaign.sentDate}</span>}
+                  </div>
+                  {campaign.mediaslideLink && (
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="text-sm">🔗</span>
+                      <a href={campaign.mediaslideLink} target="_blank" rel="noopener noreferrer"
+                        className="text-sm text-blue-600 hover:underline truncate">{campaign.mediaslideLink}</a>
+                      <button onClick={copyLink}
+                        className={`text-xs px-3 py-1 rounded-full transition-colors shrink-0 ${copied ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+                        {copied ? '✓ Copied!' : 'Copy Link'}
+                      </button>
+                    </div>
+                  )}
+                  {campaign.notes && <p className="text-sm text-slate-500 mt-1">{campaign.notes}</p>}
+                </div>
+                <button onClick={onDelete} className="text-slate-300 hover:text-red-500 transition-colors p-2 shrink-0">🗑️</button>
+              </div>
+
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                {AGENCY_STATUSES.map(s => (
+                  <div key={s.id} className={`p-3 rounded-lg text-center ${cellClass(s.id)}`}>
+                    <div className="text-2xl font-bold">{statusCounts[s.id] || 0}</div>
+                    <div className="text-xs mt-0.5 leading-tight">{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="text-left p-3 font-semibold text-slate-700 sticky left-0 bg-slate-50 min-w-[180px] border-r border-slate-200 z-10">
+                          Model <span className="font-normal text-slate-400">({campaignModels.length})</span>
+                        </th>
+                        {agencyNames.map(aName => {
+                          const doc = agencies.find(a => a.name === aName && a.territory === campaign.territory);
+                          const tier = doc?.tier || '';
+                          const tc = tier === 'Top Tier' ? 'text-amber-600' : tier === 'Mid Tier' ? 'text-blue-600' : 'text-slate-400';
+                          return (
+                            <th key={aName} className="p-3 font-medium text-slate-700 text-center min-w-[140px] border-r border-slate-100 last:border-r-0">
+                              <div>{aName}</div>
+                              {tier && <div className={`text-xs font-normal ${tc}`}>{tier}</div>}
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {campaignModels.map((model, idx) => {
+                        const rowBg = idx % 2 === 0 ? 'white' : 'rgb(248,250,252)';
+                        return (
+                          <tr key={model.id}>
+                            <td className="p-3 font-medium text-slate-800 sticky left-0 border-r border-slate-200 z-10" style={{ background: rowBg }}>
+                              <div>{model.name}</div>
+                              <div className="text-xs text-slate-400">{model.gender === 'male' ? 'Men' : 'Women'}</div>
+                            </td>
+                            {agencyNames.map(agencyName => {
+                              const st = getStatus(model.id, agencyName);
+                              return (
+                                <td key={agencyName} className="p-2 text-center border-r border-slate-100 last:border-r-0" style={{ background: rowBg }}>
+                                  <select value={st} onChange={e => updateStatus(model.id, agencyName, e.target.value)}
+                                    className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${cellClass(st)}`}>
+                                    {AGENCY_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                  </select>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           );
