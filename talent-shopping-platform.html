@@ -14554,20 +14554,19 @@
           };
 
           const handleSave = () => {
-            // Update BASE_SIGNED_MODELS
             const otherSignings = BASE_SIGNED_MODELS.filter(sm =>
               sm.modelName.toUpperCase().trim() !== model.name.toUpperCase().trim()
             );
-            const updatedSignedModels = [...otherSignings, ...signings];
+            // Ensure every signing has an id before saving to Firebase
+            const updatedSignedModels = [...otherSignings, ...signings].map((sm, idx) => ({
+              ...sm,
+              id: sm.id || `signing-${Date.now()}-${idx}`
+            }));
 
-            // Since we can't directly modify the constant, we'll update it through a reassignment
-            // This will work because JavaScript allows reassignment of const arrays' contents
             BASE_SIGNED_MODELS.length = 0;
             BASE_SIGNED_MODELS.push(...updatedSignedModels);
 
-            // Save to Firebase
             saveData(COLLECTIONS.SIGNED_MODELS, updatedSignedModels);
-
             onClose();
           };
 
