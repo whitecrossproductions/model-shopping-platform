@@ -14553,20 +14553,41 @@
             setSignings(signings.filter((_, i) => i !== index));
           };
 
-          const handleSave = () => {
-            const otherSignings = BASE_SIGNED_MODELS.filter(sm =>
-              sm.modelName.toUpperCase().trim() !== model.name.toUpperCase().trim()
+          const handleSave = async () => {
+            // Only operate on THIS model's signings — never touch other models' records
+            const originalIds = new Set(
+              BASE_SIGNED_MODELS
+                .filter(sm => sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim())
+                .map(sm => sm.id)
+                .filter(Boolean)
             );
-            // Ensure every signing has an id before saving to Firebase
-            const updatedSignedModels = [...otherSignings, ...signings].map((sm, idx) => ({
+
+            // Assign ids to any new signings that don't have one yet
+            const finalSignings = signings.map((sm, idx) => ({
               ...sm,
               id: sm.id || `signing-${Date.now()}-${idx}`
             }));
 
-            BASE_SIGNED_MODELS.length = 0;
-            BASE_SIGNED_MODELS.push(...updatedSignedModels);
+            // Delete signings that the user removed
+            const keptIds = new Set(finalSignings.map(s => s.id).filter(Boolean));
+            for (const id of originalIds) {
+              if (!keptIds.has(id)) {
+                await deleteData(COLLECTIONS.SIGNED_MODELS, id);
+              }
+            }
 
-            saveData(COLLECTIONS.SIGNED_MODELS, updatedSignedModels);
+            // Save each of this model's signings individually
+            for (const signing of finalSignings) {
+              await saveData(COLLECTIONS.SIGNED_MODELS, signing);
+            }
+
+            // Update in-memory array
+            const otherSignings = BASE_SIGNED_MODELS.filter(sm =>
+              sm.modelName.toUpperCase().trim() !== model.name.toUpperCase().trim()
+            );
+            BASE_SIGNED_MODELS.length = 0;
+            BASE_SIGNED_MODELS.push(...otherSignings, ...finalSignings);
+
             onClose();
           };
 
