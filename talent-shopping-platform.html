@@ -14530,6 +14530,7 @@
           const handleAddSigning = () => {
             if (newSigning.agencyName && newSigning.territory) {
               const signing = {
+                id: Date.now().toString(),
                 modelName: model.name,
                 agencyName: newSigning.agencyName,
                 territory: newSigning.territory,
