@@ -18670,6 +18670,11 @@
             if (genderFilter === 'women' && m.gender === 'male') return false;
             if (genderFilter === 'men' && m.gender !== 'male') return false;
             if (modelFilter === 'unsigned') {
+              if (m.name === 'Maggie Laughlin') {
+                const maggieRecs = BASE_SIGNED_MODELS.filter(sm => sm.modelName === 'Maggie Laughlin');
+                console.log('MAGGIE SIGNED RECORDS:', JSON.stringify(maggieRecs));
+                console.log('CAMPAIGN TERRITORY:', JSON.stringify(territory));
+              }
               const isSigned = BASE_SIGNED_MODELS.some(sm => {
                 if (sm.modelName.toUpperCase().trim() !== m.name.toUpperCase().trim()) return false;
                 if (sm.status !== 'signed') return false;
