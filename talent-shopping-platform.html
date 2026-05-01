@@ -18281,16 +18281,17 @@
           );
         }
 
-        function CampaignCreateModal({ models, agencies, onClose, onSave }) {
+        function CampaignCreateModal({ models, agencies, onClose, onSave, initialData }) {
+          const isEditing = !!initialData;
           const [step, setStep] = useState(1);
-          const [name, setName] = useState('');
-          const [territory, setTerritory] = useState('');
-          const [mediaslideLink, setMediaslideLink] = useState('');
-          const [sentDate, setSentDate] = useState(new Date().toISOString().split('T')[0]);
-          const [notes, setNotes] = useState('');
-          const [selectedModelIds, setSelectedModelIds] = useState([]);
-          const [selectedAgencyNames, setSelectedAgencyNames] = useState([]);
-          const [modelFilter, setModelFilter] = useState('unsigned');
+          const [name, setName] = useState(initialData?.name || '');
+          const [territory, setTerritory] = useState(initialData?.territory || '');
+          const [mediaslideLink, setMediaslideLink] = useState(initialData?.mediaslideLink || '');
+          const [sentDate, setSentDate] = useState(initialData?.sentDate || new Date().toISOString().split('T')[0]);
+          const [notes, setNotes] = useState(initialData?.notes || '');
+          const [selectedModelIds, setSelectedModelIds] = useState(initialData?.modelIds || []);
+          const [selectedAgencyNames, setSelectedAgencyNames] = useState(initialData?.agencyNames || []);
+          const [modelFilter, setModelFilter] = useState('all');
           const [modelSearch, setModelSearch] = useState('');
           const [genderFilter, setGenderFilter] = useState('all');
 
@@ -18333,10 +18334,13 @@
           };
 
           const handleCreate = () => {
+            const existingStatuses = initialData?.statuses || {};
             const statuses = {};
             selectedModelIds.forEach(mid => {
               selectedAgencyNames.forEach(aName => {
-                statuses[`${mid}__${aName}`] = { status: 'not-contacted', updatedAt: new Date().toISOString() };
+                const key = `${mid}__${aName}`;
+                // Preserve existing status if it exists, otherwise default to not-contacted
+                statuses[key] = existingStatuses[key] || { status: 'not-contacted', updatedAt: new Date().toISOString() };
               });
             });
             onSave({ name: name.trim(), territory, mediaslideLink: mediaslideLink.trim(), sentDate, notes: notes.trim(), modelIds: selectedModelIds, agencyNames: selectedAgencyNames, statuses });
@@ -18348,7 +18352,7 @@
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
                 <div className="p-6 border-b border-slate-200 shrink-0">
-                  <h2 className="text-xl font-semibold text-slate-900 mb-4">New Campaign</h2>
+                  <h2 className="text-xl font-semibold text-slate-900 mb-4">{isEditing ? 'Edit Campaign' : 'New Campaign'}</h2>
                   <div className="flex items-center gap-2">
                     {stepLabels.map((label, i) => {
                       const s = i + 1;
@@ -18484,7 +18488,7 @@
                   ) : (
                     <button onClick={handleCreate} disabled={selectedAgencyNames.length === 0}
                       className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed font-medium">
-                      Create Campaign ({selectedModelIds.length} × {selectedAgencyNames.length})
+                      {isEditing ? `Save Changes (${selectedModelIds.length} × ${selectedAgencyNames.length})` : `Create Campaign (${selectedModelIds.length} × ${selectedAgencyNames.length})`}
                     </button>
                   )}
                 </div>
@@ -18495,6 +18499,10 @@
 
         function CampaignDetailView({ campaign, models, agencies, onUpdate, onBack, onDelete }) {
           const [copied, setCopied] = useState(false);
+          const [showEditModal, setShowEditModal] = useState(false);
+          const [bulkMode, setBulkMode] = useState(false);
+          const [selectedKeys, setSelectedKeys] = useState(new Set());
+          const [bulkStatus, setBulkStatus] = useState('shopped');
 
           const campaignModels = (campaign.modelIds || [])
             .map(id => models.find(m => m.id === id))
@@ -18514,6 +18522,33 @@
 
           const copyLink = () => { navigator.clipboard.writeText(campaign.mediaslideLink); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
+          // Bulk edit helpers
+          const toggleCell = (key) => {
+            setSelectedKeys(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+          };
+          const toggleRow = (modelId) => {
+            const keys = agencyNames.map(a => `${modelId}__${a}`);
+            const allSel = keys.every(k => selectedKeys.has(k));
+            setSelectedKeys(prev => { const n = new Set(prev); allSel ? keys.forEach(k => n.delete(k)) : keys.forEach(k => n.add(k)); return n; });
+          };
+          const toggleColumn = (agencyName) => {
+            const keys = campaignModels.map(m => `${m.id}__${agencyName}`);
+            const allSel = keys.every(k => selectedKeys.has(k));
+            setSelectedKeys(prev => { const n = new Set(prev); allSel ? keys.forEach(k => n.delete(k)) : keys.forEach(k => n.add(k)); return n; });
+          };
+          const toggleAll = () => {
+            const allKeys = campaignModels.flatMap(m => agencyNames.map(a => `${m.id}__${a}`));
+            const allSel = allKeys.every(k => selectedKeys.has(k));
+            setSelectedKeys(allSel ? new Set() : new Set(allKeys));
+          };
+          const applyBulkStatus = () => {
+            const newStatuses = { ...campaign.statuses };
+            selectedKeys.forEach(key => { newStatuses[key] = { status: bulkStatus, updatedAt: new Date().toISOString() }; });
+            onUpdate({ ...campaign, statuses: newStatuses });
+            setSelectedKeys(new Set());
+          };
+          const exitBulkMode = () => { setBulkMode(false); setSelectedKeys(new Set()); };
+
           const allStatuses = Object.values(campaign.statuses || {}).map(s => s.status);
           const statusCounts = AGENCY_STATUSES.reduce((acc, s) => ({ ...acc, [s.id]: 0 }), {});
           allStatuses.forEach(s => { if (statusCounts[s] !== undefined) statusCounts[s]++; });
@@ -18528,8 +18563,12 @@
             'signed': 'bg-emerald-50 text-emerald-700'
           })[status] || 'bg-slate-50 text-slate-500';
 
+          const allKeys = campaignModels.flatMap(m => agencyNames.map(a => `${m.id}__${a}`));
+          const allSelected = allKeys.length > 0 && allKeys.every(k => selectedKeys.has(k));
+
           return (
             <div className="space-y-6">
+              {/* Header */}
               <div className="flex items-start gap-3">
                 <button onClick={onBack} className="mt-1 px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors shrink-0">← Back</button>
                 <div className="flex-1 min-w-0">
@@ -18551,9 +18590,16 @@
                   )}
                   {campaign.notes && <p className="text-sm text-slate-500 mt-1">{campaign.notes}</p>}
                 </div>
-                <button onClick={onDelete} className="text-slate-300 hover:text-red-500 transition-colors p-2 shrink-0">🗑️</button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => setShowEditModal(true)}
+                    className="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-medium">
+                    ✏️ Edit
+                  </button>
+                  <button onClick={onDelete} className="text-slate-300 hover:text-red-500 transition-colors p-2">🗑️</button>
+                </div>
               </div>
 
+              {/* Stats */}
               <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
                 {AGENCY_STATUSES.map(s => (
                   <div key={s.id} className={`p-3 rounded-lg text-center ${cellClass(s.id)}`}>
@@ -18563,6 +18609,35 @@
                 ))}
               </div>
 
+              {/* Bulk edit toolbar */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${bulkMode ? 'bg-orange-100 text-orange-700 hover:bg-orange-200' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                  {bulkMode ? '✕ Exit Bulk Edit' : '☑ Bulk Edit'}
+                </button>
+                {bulkMode && (
+                  <>
+                    <span className="text-sm text-slate-500">{selectedKeys.size} selected</span>
+                    <button onClick={toggleAll} className="text-xs text-blue-600 hover:underline">
+                      {allSelected ? 'Deselect all' : 'Select all'}
+                    </button>
+                    <div className="flex items-center gap-2 ml-auto flex-wrap">
+                      <span className="text-sm text-slate-600 font-medium">Set selected to:</span>
+                      <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}
+                        className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        {AGENCY_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                      </select>
+                      <button onClick={applyBulkStatus} disabled={selectedKeys.size === 0}
+                        className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed">
+                        Apply
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Matrix grid */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm border-collapse">
@@ -18575,8 +18650,15 @@
                           const doc = agencies.find(a => a.name === aName && a.territory === campaign.territory);
                           const tier = doc?.tier || '';
                           const tc = tier === 'Top Tier' ? 'text-amber-600' : tier === 'Mid Tier' ? 'text-blue-600' : 'text-slate-400';
+                          const colKeys = campaignModels.map(m => `${m.id}__${aName}`);
+                          const colAllSel = colKeys.length > 0 && colKeys.every(k => selectedKeys.has(k));
                           return (
                             <th key={aName} className="p-3 font-medium text-slate-700 text-center min-w-[140px] border-r border-slate-100 last:border-r-0">
+                              {bulkMode && (
+                                <div className="flex justify-center mb-1">
+                                  <input type="checkbox" checked={colAllSel} onChange={() => toggleColumn(aName)} className="rounded" />
+                                </div>
+                              )}
                               <div>{aName}</div>
                               {tier && <div className={`text-xs font-normal ${tc}`}>{tier}</div>}
                             </th>
@@ -18587,20 +18669,40 @@
                     <tbody>
                       {campaignModels.map((model, idx) => {
                         const rowBg = idx % 2 === 0 ? 'white' : 'rgb(248,250,252)';
+                        const rowKeys = agencyNames.map(a => `${model.id}__${a}`);
+                        const rowAllSel = rowKeys.every(k => selectedKeys.has(k));
                         return (
                           <tr key={model.id}>
                             <td className="p-3 font-medium text-slate-800 sticky left-0 border-r border-slate-200 z-10" style={{ background: rowBg }}>
-                              <div>{model.name}</div>
-                              <div className="text-xs text-slate-400">{model.gender === 'male' ? 'Men' : 'Women'}</div>
+                              <div className="flex items-center gap-2">
+                                {bulkMode && (
+                                  <input type="checkbox" checked={rowAllSel} onChange={() => toggleRow(model.id)} className="rounded shrink-0" />
+                                )}
+                                <div>
+                                  <div>{model.name}</div>
+                                  <div className="text-xs text-slate-400">{model.gender === 'male' ? 'Men' : 'Women'}</div>
+                                </div>
+                              </div>
                             </td>
                             {agencyNames.map(agencyName => {
                               const st = getStatus(model.id, agencyName);
+                              const key = `${model.id}__${agencyName}`;
+                              const isSelected = selectedKeys.has(key);
                               return (
                                 <td key={agencyName} className="p-2 text-center border-r border-slate-100 last:border-r-0" style={{ background: rowBg }}>
-                                  <select value={st} onChange={e => updateStatus(model.id, agencyName, e.target.value)}
-                                    className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${cellClass(st)}`}>
-                                    {AGENCY_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                                  </select>
+                                  {bulkMode ? (
+                                    <button
+                                      onClick={() => toggleCell(key)}
+                                      className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''} ${cellClass(st)}`}>
+                                      {isSelected && <span className="mr-1">✓</span>}
+                                      {AGENCY_STATUSES.find(s => s.id === st)?.label || st}
+                                    </button>
+                                  ) : (
+                                    <select value={st} onChange={e => updateStatus(model.id, agencyName, e.target.value)}
+                                      className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${cellClass(st)}`}>
+                                      {AGENCY_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                    </select>
+                                  )}
                                 </td>
                               );
                             })}
@@ -18611,6 +18713,20 @@
                   </table>
                 </div>
               </div>
+
+              {/* Edit modal */}
+              {showEditModal && (
+                <CampaignCreateModal
+                  models={models}
+                  agencies={agencies}
+                  initialData={campaign}
+                  onClose={() => setShowEditModal(false)}
+                  onSave={(updatedData) => {
+                    onUpdate({ ...campaign, ...updatedData });
+                    setShowEditModal(false);
+                  }}
+                />
+              )}
             </div>
           );
         }
