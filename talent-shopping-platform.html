@@ -18229,6 +18229,21 @@
             if (window.confirm('Delete this campaign? This cannot be undone.')) {
               setCampaigns(prev => prev.filter(c => c.id !== id));
               deleteData(COLLECTIONS.CAMPAIGNS, id);
+
+              // Clean up project entries created by this campaign
+              const updatedProjects = projects.reduce((acc, project) => {
+                // Remove agencies that came from this campaign
+                const remainingAgencies = (project.agencies || []).filter(a => a.fromCampaign !== id);
+                // If the whole project was campaign-created and now has no agencies, drop it
+                if (remainingAgencies.length === 0 && project.fromCampaign === id) {
+                  deleteData(COLLECTIONS.PROJECTS, project.id);
+                  return acc;
+                }
+                acc.push({ ...project, agencies: remainingAgencies });
+                return acc;
+              }, []);
+              setProjects(updatedProjects);
+
               setActiveCampaign(null);
             }
           };
