@@ -13440,6 +13440,7 @@
                   });
                   BASE_SIGNED_MODELS.length = 0;
                   BASE_SIGNED_MODELS.push(...data);
+                  window._signedModels = BASE_SIGNED_MODELS;
                   console.log(`✅ SignedModels synced: ${data.length}`);
                 }
               }));
