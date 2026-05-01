@@ -13363,6 +13363,21 @@
                 setFromFirebase(setAgencies, data);
                 markLoaded();
                 console.log(`✅ Agencies synced: ${data.length}`);
+                // Repair any null-territory signing records that loaded before agencies
+                const { doc, updateDoc } = window.firebaseModules;
+                BASE_SIGNED_MODELS.forEach(sm => {
+                  if (!sm.territory && sm.agencyName && sm.id) {
+                    const matched = data.find(a =>
+                      a.name.toUpperCase().trim() === sm.agencyName.toUpperCase().trim()
+                    );
+                    if (matched?.territory) {
+                      sm.territory = matched.territory;
+                      updateDoc(doc(db, COLLECTIONS.SIGNED_MODELS, sm.id), { territory: matched.territory })
+                        .then(() => console.log(`✅ Repaired territory for ${sm.modelName} / ${sm.agencyName} → ${matched.territory}`))
+                        .catch(e => console.error('Territory repair failed:', e));
+                    }
+                  }
+                });
               }, err => { console.error('Agencies listener error:', err); markLoaded(); }));
 
               // Projects
