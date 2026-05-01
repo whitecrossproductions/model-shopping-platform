@@ -16,7 +16,7 @@
     <!-- Firebase SDK -->
     <script type="module">
       import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-      import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, onSnapshot, query } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+      import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
       import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
       const firebaseConfig = {
@@ -34,7 +34,7 @@
 
       window.firebaseDB = db;
       window.firebaseAuth = auth;
-      window.firebaseModules = { collection, getDocs, doc, setDoc, deleteDoc, onSnapshot, query };
+      window.firebaseModules = { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query };
       window.firebaseAuthModules = { signInWithEmailAndPassword, signOut, onAuthStateChanged };
       window.firebaseReady = true;
 
