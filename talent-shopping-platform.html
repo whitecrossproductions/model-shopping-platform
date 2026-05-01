@@ -13299,6 +13299,7 @@
           const [todos, setTodos] = useState([]);
           const [campaigns, setCampaigns] = useState([]);
           const firebaseUpdatingRef = React.useRef(false);
+          const agenciesRef = React.useRef([]);
 
           // Check authentication state
           useEffect(() => {
@@ -13358,6 +13359,7 @@
                 const data = snap.docs.map(d => ({ ...d.data(), id: d.id })).map(a => ({
                   ...a, territory: TERRITORY_MIGRATION[a.territory] || a.territory
                 }));
+                agenciesRef.current = data;
                 setFromFirebase(setAgencies, data);
                 markLoaded();
                 console.log(`✅ Agencies synced: ${data.length}`);
@@ -13403,9 +13405,24 @@
               // SignedModels (updates module-level array, no React state)
               unsubscribers.push(onSnapshot(collection(db, COLLECTIONS.SIGNED_MODELS), snap => {
                 if (!snap.empty) {
+                  const { doc, updateDoc } = window.firebaseModules;
                   const data = snap.docs.map(d => ({ ...d.data(), id: d.id })).map(sm => ({
                     ...sm, territory: TERRITORY_MIGRATION[sm.territory] || sm.territory
                   }));
+                  // Auto-repair null territories using agency lookup
+                  data.forEach(sm => {
+                    if (!sm.territory && sm.agencyName && sm.id) {
+                      const matched = agenciesRef.current.find(a =>
+                        a.name.toUpperCase().trim() === sm.agencyName.toUpperCase().trim()
+                      );
+                      if (matched?.territory) {
+                        sm.territory = matched.territory;
+                        updateDoc(doc(db, COLLECTIONS.SIGNED_MODELS, sm.id), { territory: matched.territory })
+                          .then(() => console.log(`✅ Repaired territory for ${sm.modelName} / ${sm.agencyName} → ${matched.territory}`))
+                          .catch(e => console.error('Territory repair failed:', e));
+                      }
+                    }
+                  });
                   BASE_SIGNED_MODELS.length = 0;
                   BASE_SIGNED_MODELS.push(...data);
                   console.log(`✅ SignedModels synced: ${data.length}`);
