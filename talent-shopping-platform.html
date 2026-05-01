@@ -13386,6 +13386,8 @@
                     setCampaigns={setCampaigns}
                     models={models}
                     agencies={agencies}
+                    projects={projects}
+                    setProjects={setProjects}
                   />
                 )}
                 {activeTab === 'todo' && (
@@ -18150,14 +18152,68 @@
         // CAMPAIGNS MODULE
         // ============================================================
 
-        function Campaigns({ campaigns, setCampaigns, models, agencies }) {
+        function Campaigns({ campaigns, setCampaigns, models, agencies, projects, setProjects }) {
           const [showCreateModal, setShowCreateModal] = useState(false);
           const [activeCampaign, setActiveCampaign] = useState(null);
+
+          // Sync campaign model-agency statuses into the Projects tab
+          const syncCampaignToProjects = (campaign) => {
+            const updatedProjects = [...projects];
+
+            campaign.modelIds.forEach(modelId => {
+              const model = models.find(m => m.id === modelId);
+              if (!model) return;
+
+              const preferredDivision = model.gender === 'male' ? 'MALE' : 'FEMALE';
+
+              // Build agency entries for this model, matching the right gender division doc
+              const agencyEntries = (campaign.agencyNames || []).map(agencyName => {
+                const agencyDoc =
+                  agencies.find(a => a.name === agencyName && a.territory === campaign.territory && a.genderDivision === preferredDivision) ||
+                  agencies.find(a => a.name === agencyName && a.territory === campaign.territory);
+                if (!agencyDoc) return null;
+                const status = campaign.statuses?.[`${modelId}__${agencyName}`]?.status || 'not-contacted';
+                return { agencyId: agencyDoc.id, status, statusUpdatedAt: new Date().toISOString(), fromCampaign: campaign.id };
+              }).filter(Boolean);
+
+              if (agencyEntries.length === 0) return;
+
+              const existingIdx = updatedProjects.findIndex(p => p.modelId === modelId && p.territory === campaign.territory);
+
+              if (existingIdx >= 0) {
+                // Merge into existing project — update entries from this campaign, add new ones
+                const merged = [...(updatedProjects[existingIdx].agencies || [])];
+                agencyEntries.forEach(entry => {
+                  const i = merged.findIndex(a => a.agencyId === entry.agencyId);
+                  if (i >= 0) {
+                    // Only overwrite if this entry was originally from this campaign
+                    if (merged[i].fromCampaign === campaign.id) merged[i] = entry;
+                  } else {
+                    merged.push(entry);
+                  }
+                });
+                updatedProjects[existingIdx] = { ...updatedProjects[existingIdx], agencies: merged };
+              } else {
+                // Create new project for this model × territory
+                updatedProjects.push({
+                  id: `campaign-${campaign.id}-${modelId}`,
+                  modelId,
+                  territory: campaign.territory,
+                  fromCampaign: campaign.id,
+                  agencies: agencyEntries,
+                  createdAt: new Date().toISOString()
+                });
+              }
+            });
+
+            setProjects(updatedProjects);
+          };
 
           const handleCreate = (campaignData) => {
             const newCampaign = { id: Date.now().toString(), ...campaignData, createdAt: new Date().toISOString() };
             setCampaigns(prev => [...prev, newCampaign]);
             saveData(COLLECTIONS.CAMPAIGNS, newCampaign);
+            syncCampaignToProjects(newCampaign);
             setShowCreateModal(false);
             setActiveCampaign(newCampaign);
           };
@@ -18165,6 +18221,7 @@
           const handleUpdate = (updatedCampaign) => {
             setCampaigns(prev => prev.map(c => c.id === updatedCampaign.id ? updatedCampaign : c));
             saveData(COLLECTIONS.CAMPAIGNS, updatedCampaign);
+            syncCampaignToProjects(updatedCampaign);
             setActiveCampaign(updatedCampaign);
           };
 
