@@ -18638,10 +18638,13 @@
             if (genderFilter === 'women' && m.gender === 'male') return false;
             if (genderFilter === 'men' && m.gender !== 'male') return false;
             if (modelFilter === 'unsigned') {
-              const isSigned = BASE_SIGNED_MODELS.some(sm =>
-                sm.modelName.toUpperCase().trim() === m.name.toUpperCase().trim() &&
-                sm.territory === territory && sm.status === 'signed'
-              );
+              const isSigned = BASE_SIGNED_MODELS.some(sm => {
+                if (sm.modelName.toUpperCase().trim() !== m.name.toUpperCase().trim()) return false;
+                if (sm.status !== 'signed') return false;
+                const smTerritory = sm.territory ||
+                  (agencies.find(a => a.name.toUpperCase().trim() === sm.agencyName.toUpperCase().trim())?.territory);
+                return smTerritory === territory;
+              });
               return !isSigned;
             }
             return true;
