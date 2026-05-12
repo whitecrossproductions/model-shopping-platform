@@ -18642,6 +18642,7 @@
                 <CampaignCreateModal
                   models={models}
                   agencies={agencies}
+                  campaigns={campaigns}
                   onClose={() => setShowCreateModal(false)}
                   onSave={handleCreate}
                 />
@@ -18650,7 +18651,7 @@
           );
         }
 
-        function CampaignCreateModal({ models, agencies, onClose, onSave, initialData }) {
+        function CampaignCreateModal({ models, agencies, campaigns, onClose, onSave, initialData }) {
           const isEditing = !!initialData;
           const [step, setStep] = useState(1);
           const [name, setName] = useState(initialData?.name || '');
@@ -18665,6 +18666,50 @@
           const [genderFilter, setGenderFilter] = useState('all');
 
           const allTerritories = [...new Set(agencies.map(a => a.territory))].filter(Boolean).sort();
+
+          // Returns past shop history for a model+agency pair across previous campaigns
+          const getShopHistory = (modelId, agencyName) => {
+            if (!campaigns) return [];
+            return campaigns
+              .filter(c => c.territory === territory && c.id !== initialData?.id)
+              .filter(c => (c.modelIds || []).includes(modelId))
+              .map(c => {
+                const key = `${modelId}__${agencyName}`;
+                const entry = c.statuses?.[key];
+                if (!entry) return null;
+                return { campaignName: c.name, sentDate: c.sentDate, status: entry.status, updatedAt: entry.updatedAt };
+              })
+              .filter(Boolean)
+              .sort((a, b) => new Date(b.sentDate || 0) - new Date(a.sentDate || 0));
+          };
+
+          // Returns released signings for a model in the current territory
+          const getReleasedSignings = (modelName) => {
+            return BASE_SIGNED_MODELS.filter(sm =>
+              sm.modelName.toUpperCase().trim() === modelName.toUpperCase().trim() &&
+              sm.status === 'released' &&
+              sm.territory === territory
+            );
+          };
+
+          // Returns all shop history for a model across all agencies in the territory (for step 2 summary)
+          const getModelShopSummary = (model) => {
+            if (!campaigns) return { totalShops: 0, released: [] };
+            const agencyNames = agencies.filter(a => a.territory === territory).map(a => a.name);
+            let totalShops = 0;
+            agencyNames.forEach(agencyName => {
+              const history = getShopHistory(model.id, agencyName);
+              totalShops += history.length;
+            });
+            const released = getReleasedSignings(model.name);
+            return { totalShops, released };
+          };
+
+          const fmtDate = (d) => {
+            if (!d) return '?';
+            const date = new Date(d);
+            return isNaN(date) ? d : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+          };
 
           const filteredModels = territory ? models.filter(m => {
             if (modelSearch && !m.name.toLowerCase().includes(modelSearch.toLowerCase())) return false;
@@ -18809,13 +18854,34 @@
                       <div className="space-y-0.5 max-h-72 overflow-y-auto border border-slate-200 rounded-lg p-2">
                         {filteredModels.length === 0 ? (
                           <p className="text-sm text-slate-400 text-center py-8">No models found</p>
-                        ) : filteredModels.map(model => (
-                          <label key={model.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
-                            <input type="checkbox" checked={selectedModelIds.includes(model.id)} onChange={() => toggleModel(model.id)} className="rounded" />
-                            <span className="text-sm font-medium text-slate-800 flex-1">{model.name}</span>
-                            <span className="text-xs text-slate-400">{model.gender === 'male' ? 'Men' : 'Women'}</span>
-                          </label>
-                        ))}
+                        ) : filteredModels.map(model => {
+                          const summary = territory ? getModelShopSummary(model) : { totalShops: 0, released: [] };
+                          return (
+                            <label key={model.id} className="flex items-start gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                              <input type="checkbox" checked={selectedModelIds.includes(model.id)} onChange={() => toggleModel(model.id)} className="rounded mt-0.5" />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-slate-800">{model.name}</span>
+                                  <span className="text-xs text-slate-400">{model.gender === 'male' ? 'Men' : 'Women'}</span>
+                                </div>
+                                {(summary.totalShops > 0 || summary.released.length > 0) && (
+                                  <div className="flex flex-wrap gap-1.5 mt-1">
+                                    {summary.totalShops > 0 && (
+                                      <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
+                                        🔁 Shopped {summary.totalShops}x in {territory}
+                                      </span>
+                                    )}
+                                    {summary.released.map((r, i) => (
+                                      <span key={i} className="text-xs px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded">
+                                        🔄 Released from {r.agencyName}{r.releasedDate ? ` (${fmtDate(r.releasedDate)})` : ''}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -18835,12 +18901,41 @@
                               </button>
                             </div>
                             <div className="space-y-0.5">
-                              {tierAgencies.map(agency => (
-                                <label key={agency.name} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
-                                  <input type="checkbox" checked={selectedAgencyNames.includes(agency.name)} onChange={() => toggleAgency(agency.name)} className="rounded" />
-                                  <span className="text-sm font-medium text-slate-800">{agency.name}</span>
-                                </label>
-                              ))}
+                              {tierAgencies.map(agency => {
+                                const selectedModels = selectedModelIds.map(id => models.find(m => m.id === id)).filter(Boolean);
+                                const agencyHistory = selectedModels.flatMap(model => {
+                                  const history = getShopHistory(model.id, agency.name);
+                                  const released = BASE_SIGNED_MODELS.filter(sm =>
+                                    sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() &&
+                                    sm.agencyName.toUpperCase().trim() === agency.name.toUpperCase().trim() &&
+                                    sm.status === 'released'
+                                  );
+                                  return [
+                                    ...history.map(h => ({ model: model.name, type: 'shopped', date: h.sentDate, status: h.status })),
+                                    ...released.map(r => ({ model: model.name, type: 'released', signedDate: r.signedDate, releasedDate: r.releasedDate }))
+                                  ];
+                                });
+                                return (
+                                  <label key={agency.name} className="flex items-start gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                                    <input type="checkbox" checked={selectedAgencyNames.includes(agency.name)} onChange={() => toggleAgency(agency.name)} className="rounded mt-0.5" />
+                                    <div className="flex-1 min-w-0">
+                                      <span className="text-sm font-medium text-slate-800">{agency.name}</span>
+                                      {agencyHistory.length > 0 && (
+                                        <div className="mt-1 space-y-0.5">
+                                          {agencyHistory.map((h, i) => (
+                                            <div key={i} className="text-xs text-slate-500">
+                                              {h.type === 'shopped'
+                                                ? <span>📤 <span className="font-medium text-slate-700">{h.model}</span> — shopped {fmtDate(h.date)}{h.status && h.status !== 'shopped' ? ` · ${h.status}` : ''}</span>
+                                                : <span>🔄 <span className="font-medium text-slate-700">{h.model}</span> — signed {fmtDate(h.signedDate)} · released {fmtDate(h.releasedDate)}</span>
+                                              }
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </label>
+                                );
+                              })}
                             </div>
                           </div>
                         );
@@ -19093,6 +19188,7 @@
                 <CampaignCreateModal
                   models={models}
                   agencies={agencies}
+                  campaigns={campaigns}
                   initialData={campaign}
                   onClose={() => setShowEditModal(false)}
                   onSave={(updatedData) => {
