@@ -6,7 +6,7 @@
     <title>Talent Shopping Platform V3.0 - Firebase</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.29.7/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -13440,7 +13440,6 @@
                   });
                   BASE_SIGNED_MODELS.length = 0;
                   BASE_SIGNED_MODELS.push(...data);
-                  window._signedModels = BASE_SIGNED_MODELS;
                   console.log(`✅ SignedModels synced: ${data.length}`);
                 }
               }));
@@ -18552,8 +18551,6 @@
                 campaign={freshCampaign}
                 models={models}
                 agencies={agencies}
-                campaigns={campaigns}
-                projects={projects}
                 onUpdate={handleUpdate}
                 onBack={() => setActiveCampaign(null)}
                 onDelete={() => handleDelete(freshCampaign.id)}
@@ -18644,8 +18641,6 @@
                 <CampaignCreateModal
                   models={models}
                   agencies={agencies}
-                  campaigns={campaigns}
-                  projects={projects}
                   onClose={() => setShowCreateModal(false)}
                   onSave={handleCreate}
                 />
@@ -18654,7 +18649,7 @@
           );
         }
 
-        function CampaignCreateModal({ models, agencies, campaigns, projects, onClose, onSave, initialData }) {
+        function CampaignCreateModal({ models, agencies, onClose, onSave, initialData }) {
           const isEditing = !!initialData;
           const [step, setStep] = useState(1);
           const [name, setName] = useState(initialData?.name || '');
@@ -18670,79 +18665,22 @@
 
           const allTerritories = [...new Set(agencies.map(a => a.territory))].filter(Boolean).sort();
 
-          // Returns past shop history for a model+agency pair across previous campaigns
-          const getShopHistory = (modelId, agencyName) => {
-            const results = [];
-            // From campaigns
-            if (campaigns) {
-              campaigns
-                .filter(c => c.territory === territory && c.id !== initialData?.id)
-                .filter(c => (c.modelIds || []).includes(modelId))
-                .forEach(c => {
-                  const key = `${modelId}__${agencyName}`;
-                  const entry = c.statuses?.[key];
-                  if (entry) results.push({ source: 'campaign', campaignName: c.name, sentDate: c.sentDate, status: entry.status });
-                });
-            }
-            // From projects
-            if (projects) {
-              const agency = agencies.find(a => a.name.toUpperCase().trim() === agencyName.toUpperCase().trim() && a.territory === territory);
-              if (agency) {
-                projects
-                  .filter(p => p.modelId === modelId && p.territory === territory)
-                  .forEach(p => {
-                    const pa = (p.agencies || []).find(a => a.agencyId === agency.id);
-                    if (pa && pa.status !== 'not-contacted') {
-                      results.push({ source: 'project', projectName: p.name, sentDate: pa.contactedDate || pa.statusUpdatedAt, status: pa.status });
-                    }
-                  });
-              }
-            }
-            return results.sort((a, b) => new Date(b.sentDate || 0) - new Date(a.sentDate || 0));
-          };
-
-          // Returns released signings for a model in the current territory
-          const getReleasedSignings = (modelName) => {
-            const territoryAgencyNames = new Set(
-              agencies.filter(a => a.territory === territory).map(a => a.name.toUpperCase().trim())
-            );
-            return BASE_SIGNED_MODELS.filter(sm =>
-              sm.modelName.toUpperCase().trim() === modelName.toUpperCase().trim() &&
-              sm.status === 'released' &&
-              (sm.territory === territory || territoryAgencyNames.has((sm.agencyName || '').toUpperCase().trim()))
-            );
-          };
-
-          // Returns all shop history for a model across all agencies in the territory (for step 2 summary)
-          const getModelShopSummary = (model) => {
-            const agencyNames = agencies.filter(a => a.territory === territory).map(a => a.name);
-            let totalShops = 0;
-            agencyNames.forEach(agencyName => {
-              totalShops += getShopHistory(model.id, agencyName).length;
-            });
-            const released = getReleasedSignings(model.name);
-            return { totalShops, released };
-          };
-
-          const fmtDate = (d) => {
-            if (!d) return '?';
-            const date = new Date(d);
-            return isNaN(date) ? d : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
-          };
-
           const filteredModels = territory ? models.filter(m => {
             if (modelSearch && !m.name.toLowerCase().includes(modelSearch.toLowerCase())) return false;
             if (genderFilter === 'women' && m.gender === 'male') return false;
             if (genderFilter === 'men' && m.gender !== 'male') return false;
             if (modelFilter === 'unsigned') {
-              const territoryAgencyNames = new Set(
-                agencies.filter(a => a.territory === territory).map(a => a.name.toUpperCase().trim())
-              );
+              if (m.name === 'Maggie Laughlin') {
+                const maggieRecs = BASE_SIGNED_MODELS.filter(sm => sm.modelName === 'Maggie Laughlin');
+                console.log('MAGGIE SIGNED RECORDS:', JSON.stringify(maggieRecs));
+                console.log('CAMPAIGN TERRITORY:', JSON.stringify(territory));
+              }
               const isSigned = BASE_SIGNED_MODELS.some(sm => {
                 if (sm.modelName.toUpperCase().trim() !== m.name.toUpperCase().trim()) return false;
                 if (sm.status !== 'signed') return false;
-                return territoryAgencyNames.has((sm.agencyName || '').toUpperCase().trim())
-                  || sm.territory === territory;
+                const smTerritory = sm.territory ||
+                  (agencies.find(a => a.name.toUpperCase().trim() === sm.agencyName.toUpperCase().trim())?.territory);
+                return smTerritory === territory;
               });
               return !isSigned;
             }
@@ -18873,34 +18811,13 @@
                       <div className="space-y-0.5 max-h-72 overflow-y-auto border border-slate-200 rounded-lg p-2">
                         {filteredModels.length === 0 ? (
                           <p className="text-sm text-slate-400 text-center py-8">No models found</p>
-                        ) : filteredModels.map(model => {
-                          const summary = territory ? getModelShopSummary(model) : { totalShops: 0, released: [] };
-                          return (
-                            <label key={model.id} className="flex items-start gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
-                              <input type="checkbox" checked={selectedModelIds.includes(model.id)} onChange={() => toggleModel(model.id)} className="rounded mt-0.5" />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium text-slate-800">{model.name}</span>
-                                  <span className="text-xs text-slate-400">{model.gender === 'male' ? 'Men' : 'Women'}</span>
-                                </div>
-                                {(summary.totalShops > 0 || summary.released.length > 0) && (
-                                  <div className="flex flex-wrap gap-1.5 mt-1">
-                                    {summary.totalShops > 0 && (
-                                      <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">
-                                        🔁 Shopped {summary.totalShops}x in {territory}
-                                      </span>
-                                    )}
-                                    {summary.released.map((r, i) => (
-                                      <span key={i} className="text-xs px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded">
-                                        🔄 Released from {r.agencyName}{r.releasedDate ? ` (${fmtDate(r.releasedDate)})` : ''}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </label>
-                          );
-                        })}
+                        ) : filteredModels.map(model => (
+                          <label key={model.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                            <input type="checkbox" checked={selectedModelIds.includes(model.id)} onChange={() => toggleModel(model.id)} className="rounded" />
+                            <span className="text-sm font-medium text-slate-800 flex-1">{model.name}</span>
+                            <span className="text-xs text-slate-400">{model.gender === 'male' ? 'Men' : 'Women'}</span>
+                          </label>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -18920,41 +18837,12 @@
                               </button>
                             </div>
                             <div className="space-y-0.5">
-                              {tierAgencies.map(agency => {
-                                const selectedModels = selectedModelIds.map(id => models.find(m => m.id === id)).filter(Boolean);
-                                const agencyHistory = selectedModels.flatMap(model => {
-                                  const history = getShopHistory(model.id, agency.name);
-                                  const released = BASE_SIGNED_MODELS.filter(sm =>
-                                    sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() &&
-                                    sm.agencyName.toUpperCase().trim() === agency.name.toUpperCase().trim() &&
-                                    sm.status === 'released'
-                                  );
-                                  return [
-                                    ...history.map(h => ({ model: model.name, type: 'shopped', date: h.sentDate, status: h.status, source: h.source })),
-                                    ...released.map(r => ({ model: model.name, type: 'released', signedDate: r.signedDate, releasedDate: r.releasedDate }))
-                                  ];
-                                });
-                                return (
-                                  <label key={agency.name} className="flex items-start gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
-                                    <input type="checkbox" checked={selectedAgencyNames.includes(agency.name)} onChange={() => toggleAgency(agency.name)} className="rounded mt-0.5" />
-                                    <div className="flex-1 min-w-0">
-                                      <span className="text-sm font-medium text-slate-800">{agency.name}</span>
-                                      {agencyHistory.length > 0 && (
-                                        <div className="mt-1 space-y-0.5">
-                                          {agencyHistory.map((h, i) => (
-                                            <div key={i} className="text-xs text-slate-500">
-                                              {h.type === 'shopped'
-                                                ? <span>📤 <span className="font-medium text-slate-700">{h.model}</span> — {h.source === 'project' ? 'project' : 'campaign'} · {fmtDate(h.date)}{h.status && h.status !== 'shopped' && h.status !== 'not-contacted' ? ` · ${h.status}` : ''}</span>
-                                                : <span>🔄 <span className="font-medium text-slate-700">{h.model}</span> — signed {fmtDate(h.signedDate)} · released {fmtDate(h.releasedDate)}</span>
-                                              }
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </label>
-                                );
-                              })}
+                              {tierAgencies.map(agency => (
+                                <label key={agency.name} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                                  <input type="checkbox" checked={selectedAgencyNames.includes(agency.name)} onChange={() => toggleAgency(agency.name)} className="rounded" />
+                                  <span className="text-sm font-medium text-slate-800">{agency.name}</span>
+                                </label>
+                              ))}
                             </div>
                           </div>
                         );
@@ -18985,7 +18873,7 @@
           );
         }
 
-        function CampaignDetailView({ campaign, models, agencies, campaigns, projects, onUpdate, onBack, onDelete }) {
+        function CampaignDetailView({ campaign, models, agencies, onUpdate, onBack, onDelete }) {
           const [copied, setCopied] = useState(false);
           const [showEditModal, setShowEditModal] = useState(false);
           const [bulkMode, setBulkMode] = useState(false);
@@ -19009,46 +18897,6 @@
           };
 
           const copyLink = () => { navigator.clipboard.writeText(campaign.mediaslideLink); setCopied(true); setTimeout(() => setCopied(false), 2000); };
-
-          const fmtD = (d) => {
-            if (!d) return null;
-            const dt = new Date(d);
-            return isNaN(dt) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
-          };
-
-          // Get prior history for a model+agency cell (excluding this campaign)
-          const getCellHistory = (model, agencyName) => {
-            const notes = [];
-            // Signed / released signings
-            const signings = BASE_SIGNED_MODELS.filter(sm =>
-              sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() &&
-              sm.agencyName.toUpperCase().trim() === agencyName.toUpperCase().trim()
-            );
-            signings.forEach(sm => {
-              if (sm.status === 'signed') notes.push({ label: `Signed ${fmtD(sm.signedDate) || ''}`, color: 'text-emerald-600' });
-              if (sm.status === 'released') notes.push({ label: `Was signed ${fmtD(sm.signedDate) || '?'} – released ${fmtD(sm.releasedDate) || '?'}`, color: 'text-amber-600' });
-            });
-            // Prior campaigns
-            if (campaigns) {
-              campaigns.filter(c => c.id !== campaign.id && (c.modelIds || []).includes(model.id)).forEach(c => {
-                const entry = c.statuses?.[`${model.id}__${agencyName}`];
-                if (entry) notes.push({ label: `${c.sentDate ? fmtD(c.sentDate) : c.name}: ${entry.status}`, color: 'text-blue-500' });
-              });
-            }
-            // Prior projects
-            if (projects) {
-              const agency = agencies.find(a => a.name.toUpperCase().trim() === agencyName.toUpperCase().trim() && a.territory === campaign.territory);
-              if (agency) {
-                projects.filter(p => p.modelId === model.id && p.territory === campaign.territory).forEach(p => {
-                  const pa = (p.agencies || []).find(a => a.agencyId === agency.id);
-                  if (pa && pa.status !== 'not-contacted') {
-                    notes.push({ label: `Project ${fmtD(pa.contactedDate || pa.statusUpdatedAt) || ''}: ${pa.status}`, color: 'text-purple-500' });
-                  }
-                });
-              }
-            }
-            return notes;
-          };
 
           // Bulk edit helpers
           const toggleCell = (key) => {
@@ -19216,7 +19064,6 @@
                               const st = getStatus(model.id, agencyName);
                               const key = `${model.id}__${agencyName}`;
                               const isSelected = selectedKeys.has(key);
-                              const history = getCellHistory(model, agencyName);
                               return (
                                 <td key={agencyName} className="p-2 text-center border-r border-slate-100 last:border-r-0" style={{ background: rowBg }}>
                                   {bulkMode ? (
@@ -19231,13 +19078,6 @@
                                       className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${cellClass(st)}`}>
                                       {AGENCY_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                                     </select>
-                                  )}
-                                  {history.length > 0 && (
-                                    <div className="mt-1 space-y-0.5">
-                                      {history.map((h, i) => (
-                                        <div key={i} className={`text-xs leading-tight ${h.color}`}>{h.label}</div>
-                                      ))}
-                                    </div>
                                   )}
                                 </td>
                               );
@@ -19255,8 +19095,6 @@
                 <CampaignCreateModal
                   models={models}
                   agencies={agencies}
-                  campaigns={campaigns}
-                  projects={projects}
                   initialData={campaign}
                   onClose={() => setShowEditModal(false)}
                   onSave={(updatedData) => {
