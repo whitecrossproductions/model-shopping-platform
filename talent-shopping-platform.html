@@ -18658,7 +18658,13 @@
           const [sentDate, setSentDate] = useState(initialData?.sentDate || new Date().toISOString().split('T')[0]);
           const [notes, setNotes] = useState(initialData?.notes || '');
           const [selectedModelIds, setSelectedModelIds] = useState(initialData?.modelIds || []);
-          const [selectedAgencyNames, setSelectedAgencyNames] = useState(initialData?.agencyNames || []);
+          const [selectedAgencyNames, setSelectedAgencyNames] = useState(() => {
+            if (!initialData?.agencyNames) return [];
+            const validNames = new Set(
+              agencies.filter(a => a.territory === (initialData.territory || '')).map(a => a.name)
+            );
+            return initialData.agencyNames.filter(n => validNames.has(n));
+          });
           const [modelFilter, setModelFilter] = useState('all');
           const [modelSearch, setModelSearch] = useState('');
           const [genderFilter, setGenderFilter] = useState('all');
@@ -18689,15 +18695,18 @@
 
           const territoryAgencyGroups = (() => {
             if (!territory) return {};
+            const tierOrder = { 'Top Tier': 1, 'Mid Tier': 2, 'Low Tier': 3 };
             const byName = {};
             agencies.filter(a => a.territory === territory).forEach(a => {
-              if (!byName[a.name]) byName[a.name] = { name: a.name, tier: a.tier || 'Low Tier' };
+              const tier = a.tier || 'Low Tier';
+              if (!byName[a.name] || (tierOrder[tier] || 4) < (tierOrder[byName[a.name].tier] || 4)) {
+                byName[a.name] = { name: a.name, tier };
+              }
             });
             const groups = { 'Top Tier': [], 'Mid Tier': [], 'Low Tier': [] };
-            Object.values(byName).sort((a, b) => {
-              const order = { 'Top Tier': 1, 'Mid Tier': 2, 'Low Tier': 3 };
-              return ((order[a.tier] || 4) - (order[b.tier] || 4)) || a.name.localeCompare(b.name);
-            }).forEach(a => { (groups[a.tier] || groups['Low Tier']).push(a); });
+            Object.values(byName).sort((a, b) =>
+              ((tierOrder[a.tier] || 4) - (tierOrder[b.tier] || 4)) || a.name.localeCompare(b.name)
+            ).forEach(a => { (groups[a.tier] || groups['Low Tier']).push(a); });
             return groups;
           })();
 
@@ -18880,12 +18889,28 @@
           const [selectedKeys, setSelectedKeys] = useState(new Set());
           const [bulkStatus, setBulkStatus] = useState('shopped');
 
+          // Auto-repair: remove orphaned agency names that no longer exist in the territory
+          useEffect(() => {
+            if (!agencies.length || !campaign.agencyNames) return;
+            const validNames = new Set(agencies.filter(a => a.territory === campaign.territory).map(a => a.name));
+            const orphaned = (campaign.agencyNames || []).filter(n => !validNames.has(n));
+            if (orphaned.length === 0) return;
+            const cleanedNames = campaign.agencyNames.filter(n => validNames.has(n));
+            const cleanedStatuses = Object.fromEntries(
+              Object.entries(campaign.statuses || {}).filter(([k]) => !orphaned.some(n => k.endsWith(`__${n}`)))
+            );
+            onUpdate({ ...campaign, agencyNames: cleanedNames, statuses: cleanedStatuses });
+          }, [campaign.id, agencies.length]);
+
           const campaignModels = (campaign.modelIds || [])
             .map(id => models.find(m => m.id === id))
             .filter(Boolean)
             .sort((a, b) => a.name.localeCompare(b.name));
 
-          const agencyNames = campaign.agencyNames || [];
+          const territoryAgencyNames = new Set(
+            agencies.filter(a => a.territory === campaign.territory).map(a => a.name)
+          );
+          const agencyNames = (campaign.agencyNames || []).filter(n => territoryAgencyNames.has(n));
 
           const getStatus = (modelId, agencyName) =>
             campaign.statuses?.[`${modelId}__${agencyName}`]?.status || 'not-contacted';
