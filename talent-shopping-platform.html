@@ -13391,9 +13391,11 @@
                     statusUpdatedAt: agency.statusUpdatedAt || agency.contactedDate || new Date().toISOString()
                   }))
                 }));
-                // Deduplicate: merge any two docs with the same modelId + territory
+                // Deduplicate: merge any two docs with the same modelId + territory,
+                // then delete the extra doc from Firebase so it doesn't reappear.
                 const seen = {};
                 const deduped = [];
+                const duplicateIds = [];
                 data.forEach(p => {
                   const key = `${p.modelId}__${p.territory}`;
                   if (!seen[key]) {
@@ -13404,8 +13406,15 @@
                     const keeper = seen[key];
                     const existingIds = new Set(keeper.agencies.map(a => a.agencyId));
                     p.agencies.forEach(a => { if (!existingIds.has(a.agencyId)) keeper.agencies.push(a); });
+                    duplicateIds.push(p.id);
                   }
                 });
+                // Persist: delete the duplicate docs and save the merged keeper
+                if (duplicateIds.length > 0) {
+                  duplicateIds.forEach(id => deleteData(COLLECTIONS.PROJECTS, id));
+                  deduped.forEach(p => saveData(COLLECTIONS.PROJECTS, p));
+                  console.log(`🧹 Removed ${duplicateIds.length} duplicate project(s):`, duplicateIds);
+                }
                 setFromFirebase(setProjects, deduped);
                 markLoaded();
                 console.log(`✅ Projects synced: ${data.length}`);
