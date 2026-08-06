@@ -17383,294 +17383,112 @@
 
         // Batch Email Modal
         function BatchEmailModal({ project, model, agencies, onClose, onUpdate }) {
-          const [emailTemplate, setEmailTemplate] = useState(() => {
-            // Default to custom template if model has one, otherwise standard
-            return (model?.emailSubject && model?.emailBody) ? 'custom' : 'standard';
-          });
-          const [copiedIndex, setCopiedIndex] = useState(null);
           const [selectedAgencies, setSelectedAgencies] = useState([]);
           const [selectedAgencyTab, setSelectedAgencyTab] = useState(0);
 
-          // Check if model has custom template
-          const hasCustomTemplate = model?.emailSubject && model?.emailBody;
+          const subject = `WHITE CROSS MANAGEMENT | ${(model?.name || '').toUpperCase()}`;
 
-          // Templates
-          const templates = {
-            custom: hasCustomTemplate ? {
-              subject: model.emailSubject,
-              body: model.emailBody
-            } : {
-              subject: 'Submission: {{model_name}} for {{territory}}',
-              body: 'Hi {{contact_name}},\n\nI hope this email finds you well. I\'d like to submit {{model_name}} for representation in {{territory}}.\n\n{{model_mediaslide}}\n\nPlease let me know if you\'d like to see more information or set up a meeting.\n\nBest regards'
-            },
-            standard: {
-              subject: 'Submission: {{model_name}} for {{territory}}',
-              body: 'Hi {{contact_name}},\n\nI hope this email finds you well. I\'d like to submit {{model_name}} for representation in {{territory}}.\n\nPortfolio: {{model_mediaslide}}\n{{model_photo}}\n\nPlease let me know if you\'d like to see more information or set up a meeting.\n\nBest regards'
-            },
-            followup: {
-              subject: 'Following up: {{model_name}} submission',
-              body: 'Hi {{contact_name}},\n\nI wanted to follow up on my previous email about {{model_name}} for {{territory}}.\n\nPortfolio: {{model_mediaslide}}\n{{model_photo}}\n\nHave you had a chance to review? I\'d love to hear your thoughts.\n\nBest'
-            }
-          };
-
-          // Get current template
-          const currentTemplate = templates[emailTemplate] || templates.standard;
-
-          // Get agencies for this project with contact info
           const projectAgencies = project.agencies
             .map(pa => {
               const agency = agencies.find(a => a.id === pa.agencyId);
               return agency ? { ...pa, agency } : null;
             })
-            .filter(pa => pa !== null);
+            .filter(Boolean);
 
-          // Filter agencies based on selection
           const agenciesToEmail = selectedAgencies.length > 0
             ? projectAgencies.filter(pa => selectedAgencies.includes(pa.agencyId))
             : projectAgencies;
 
-          // Replace template variables
-          const fillTemplate = (template, agency, contact) => {
-            if (!template) return '';
-
-            const modelGender = model?.gender?.toUpperCase();
-            const relevantContacts = agency?.contacts?.filter(c => {
-              if (!c.role) return true;
-              const role = c.role.toUpperCase();
-              return role === modelGender ||
-                     (role.includes('WOMEN') && modelGender === 'FEMALE') ||
-                     (role.includes('MEN') && modelGender === 'MALE') ||
-                     (role.includes('FEMALE') && modelGender === 'FEMALE') ||
-                     (role.includes('MALE') && modelGender === 'MALE');
-            }) || [];
-
-            const contactName = contact?.name || relevantContacts[0]?.name || 'Team';
-            const contactEmail = contact?.email || relevantContacts[0]?.email || '';
-
-            return String(template)
-              .replace(/\{\{model_name\}\}/g, model?.name || '')
-              .replace(/\{\{territory\}\}/g, project?.territory || '')
-              .replace(/\{\{contact_name\}\}/g, contactName)
-              .replace(/\{\{agency_name\}\}/g, agency?.name || '')
-              .replace(/\{\{model_mediaslide\}\}/g, model?.mediaslideLink || '[Portfolio Link]')
-              .replace(/\{\{model_photo\}\}/g, model?.photoUrl || '')
-              .replace(/\{\{agency_instructions\}\}/g, agency?.instructions || '');
-          };
-
-          const copyToClipboard = async (text, index) => {
-            try {
-              await navigator.clipboard.writeText(text);
-              setCopiedIndex(index);
-              setTimeout(() => setCopiedIndex(null), 2000);
-            } catch (err) {
-              alert('Failed to copy. Please select and copy manually.');
-            }
-          };
-
-          const toggleAgencySelection = (agencyId) => {
-            setSelectedAgencies(prev =>
-              prev.includes(agencyId)
-                ? prev.filter(id => id !== agencyId)
-                : [...prev, agencyId]
-            );
-          };
-
-          const copyAllAsOneEmail = async () => {
-            // Collect all email addresses
-            const modelGender = model?.gender?.toUpperCase();
-            const allEmails = [];
-
-            agenciesToEmail.forEach(projectAgency => {
-              const agency = projectAgency.agency;
-              const relevantContacts = agency.contacts?.filter(c => {
-                if (!c.role) return true;
-                const role = c.role.toUpperCase();
-                return role === modelGender ||
-                       (role.includes('WOMEN') && modelGender === 'FEMALE') ||
-                       (role.includes('MEN') && modelGender === 'MALE') ||
-                       (role.includes('FEMALE') && modelGender === 'FEMALE') ||
-                       (role.includes('MALE') && modelGender === 'MALE');
-              }) || [];
-
-              const primaryContact = relevantContacts[0] || agency.contacts?.[0];
-              if (primaryContact?.email) {
-                allEmails.push({
-                  email: primaryContact.email,
-                  name: primaryContact.name,
-                  agency: agency.name
-                });
-              }
-            });
-
-            if (allEmails.length === 0) {
-              alert('No email addresses found for selected agencies');
-              return;
-            }
-
-            // Use first contact as primary recipient, rest as CC
-            const toEmail = allEmails[0];
-            const ccEmails = allEmails.slice(1);
-
-            // Fill template with generic contact name for combined email
-            const genericAgency = agenciesToEmail[0]?.agency;
-            const subject = fillTemplate(currentTemplate?.subject || '', genericAgency, toEmail);
-            const body = fillTemplate(currentTemplate?.body || '', genericAgency, toEmail)
-              .replace(toEmail.name, 'All'); // Make greeting generic
-
-            // Format email list
-            const toLine = `To: ${toEmail.email}`;
-            const ccLine = ccEmails.length > 0
-              ? `CC: ${ccEmails.map(e => e.email).join(', ')}`
-              : '';
-
-            const fullEmail = `${toLine}\n${ccLine}\nSubject: ${subject}\n\n${body}\n\n---\nAgencies: ${allEmails.map(e => `${e.agency} (${e.name})`).join(', ')}`;
-
-            await copyToClipboard(fullEmail, 'all');
-          };
-
-          const selectAll = () => {
-            setSelectedAgencies(projectAgencies.map(pa => pa.agencyId));
-          };
-
-          const deselectAll = () => {
-            setSelectedAgencies([]);
-          };
+          const selectAll = () => setSelectedAgencies(projectAgencies.map(pa => pa.agencyId));
+          const deselectAll = () => setSelectedAgencies([]);
 
           const markAllAsSent = () => {
             if (window.confirm(`Mark ${agenciesToEmail.length} agencies as "Sent"?`)) {
               const updatedAgencies = project.agencies.map(pa => {
                 if (agenciesToEmail.some(a => a.agencyId === pa.agencyId)) {
-                  return {
-                    ...pa,
-                    status: 'sent',
-                    sentDate: new Date().toISOString(),
-                    contactedDate: new Date().toISOString()
-                  };
+                  return { ...pa, status: 'sent', sentDate: new Date().toISOString(), contactedDate: new Date().toISOString() };
                 }
                 return pa;
               });
               onUpdate(project.id, { agencies: updatedAgencies });
-              alert('Agencies marked as sent!');
             }
           };
 
           return (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white border-b border-slate-200 p-6 z-10">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold text-slate-900">
-                      📧 Batch Email Generator - {model?.name} → {project.territory}
+              <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                {/* Header */}
+                <div className="sticky top-0 bg-white border-b border-slate-200 p-5 z-10">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-lg font-semibold text-slate-900">
+                      📧 {model?.name} → {project.territory}
                     </h2>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+                  </div>
+                  <div className="flex gap-2">
                     <button
-                      onClick={onClose}
-                      className="text-slate-400 hover:text-slate-600"
+                      onClick={selectedAgencies.length === projectAgencies.length ? deselectAll : selectAll}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 text-sm"
                     >
-                      ✕
+                      {selectedAgencies.length === projectAgencies.length ? 'Deselect All' : 'Select All'}
                     </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Email Template
-                      </label>
-                      <select
-                        value={emailTemplate}
-                        onChange={(e) => setEmailTemplate(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {hasCustomTemplate && <option value="custom">⭐ {model?.name}'s Custom Template</option>}
-                        <option value="standard">Standard</option>
-                        <option value="followup">Follow-up</option>
-                      </select>
-                    </div>
-
-                    <div className="flex items-end gap-2">
-                      <button
-                        onClick={selectedAgencies.length === projectAgencies.length ? deselectAll : selectAll}
-                        className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-sm"
-                      >
-                        {selectedAgencies.length === projectAgencies.length ? 'Deselect All' : 'Select All'}
-                      </button>
-                      <button
-                        onClick={markAllAsSent}
-                        disabled={agenciesToEmail.length === 0}
-                        className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Mark {agenciesToEmail.length} as Sent
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 text-sm text-slate-600">
-                    Showing {agenciesToEmail.length} of {projectAgencies.length} agencies
-                    {selectedAgencies.length > 0 && ` (${selectedAgencies.length} selected)`}
+                    <button
+                      onClick={markAllAsSent}
+                      disabled={agenciesToEmail.length === 0}
+                      className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50"
+                    >
+                      Mark {agenciesToEmail.length} as Sent
+                    </button>
                   </div>
                 </div>
 
                 {/* Agency Tabs */}
-                <div className="border-b border-slate-200 px-6">
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {agenciesToEmail.map((projectAgency, index) => {
-                      const agency = projectAgency.agency;
-                      const isActive = selectedAgencyTab === index;
-
-                      return (
-                        <button
-                          key={projectAgency.agencyId}
-                          onClick={() => setSelectedAgencyTab(index)}
-                          className={`px-4 py-2 rounded-t-lg text-sm font-medium whitespace-nowrap transition-all ${
-                            isActive
-                              ? 'bg-white text-blue-700 border-t-2 border-x-2 border-blue-300'
-                              : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          {agency.name}
-                        </button>
-                      );
-                    })}
+                <div className="border-b border-slate-200 px-5">
+                  <div className="flex gap-1 overflow-x-auto pb-2 pt-2">
+                    {agenciesToEmail.map((pa, index) => (
+                      <button
+                        key={pa.agencyId}
+                        onClick={() => setSelectedAgencyTab(index)}
+                        className={`px-3 py-1.5 rounded-t-lg text-sm font-medium whitespace-nowrap transition-all ${
+                          selectedAgencyTab === index
+                            ? 'bg-white text-blue-700 border-t-2 border-x-2 border-blue-300'
+                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {pa.agency.name}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                {/* Selected Agency Details */}
-                <div className="p-6">
-                  {agenciesToEmail.map((projectAgency, index) => {
+                {/* Agency Detail */}
+                <div className="p-5 space-y-4">
+                  {agenciesToEmail.map((pa, index) => {
                     if (selectedAgencyTab !== index) return null;
-                    const agency = projectAgency.agency;
+                    const agency = pa.agency;
                     const modelGender = model?.gender?.toUpperCase();
-
-                    // Get all contacts - don't filter by gender
                     const allContacts = agency.contacts || [];
-
-                    // Try to find gender-relevant contacts first, but show all if needed
-                    const genderMatchedContacts = allContacts.filter(c => {
+                    const genderMatched = allContacts.filter(c => {
                       if (!c.role) return true;
                       const role = c.role.toUpperCase();
                       return role === modelGender ||
-                             (role.includes('WOMEN') && modelGender === 'FEMALE') ||
-                             (role.includes('MEN') && modelGender === 'MALE') ||
-                             (role.includes('FEMALE') && modelGender === 'FEMALE') ||
-                             (role.includes('MALE') && modelGender === 'MALE');
+                        (role.includes('WOMEN') && modelGender === 'FEMALE') ||
+                        (role.includes('MEN') && modelGender === 'MALE') ||
+                        (role.includes('FEMALE') && modelGender === 'FEMALE') ||
+                        (role.includes('MALE') && modelGender === 'MALE');
                     });
-
-                    // Use gender-matched if available, otherwise use all contacts
-                    const relevantContacts = genderMatchedContacts.length > 0 ? genderMatchedContacts : allContacts;
+                    const relevantContacts = genderMatched.length > 0 ? genderMatched : allContacts;
                     const primaryContact = relevantContacts[0];
-                    const subject = fillTemplate(currentTemplate?.subject || '', agency, primaryContact);
-                    const body = fillTemplate(currentTemplate?.body || '', agency, primaryContact);
-
-                    // Build mailto with CC if multiple contacts
-                    const ccEmails = relevantContacts.slice(1).map(c => c.email).filter(e => e).join(',');
-                    const mailto = `mailto:${primaryContact?.email || ''}?${ccEmails ? `cc=${encodeURIComponent(ccEmails)}&` : ''}subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                    const ccEmails = relevantContacts.slice(1).map(c => c.email).filter(Boolean).join(',');
+                    const mailto = `mailto:${primaryContact?.email || ''}?${ccEmails ? `cc=${encodeURIComponent(ccEmails)}&` : ''}subject=${encodeURIComponent(subject)}`;
 
                     return (
-                      <div key={projectAgency.agencyId} className="bg-white">
-                        <div className="flex items-center gap-2 mb-4">
-                          <h3 className="font-semibold text-slate-900 text-lg">{agency.name}</h3>
+                      <div key={pa.agencyId}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <h3 className="font-semibold text-slate-900">{agency.name}</h3>
                           <TierBadge tier={agency.tier} />
                           <span className={`text-xs px-2 py-0.5 rounded ${(() => {
-                            const statusObj = AGENCY_STATUSES.find(s => s.id === projectAgency.status);
+                            const statusObj = AGENCY_STATUSES.find(s => s.id === pa.status);
                             const c = statusObj?.color || 'slate';
                             return c === 'slate' ? 'bg-slate-200 text-slate-700' :
                               c === 'blue' ? 'bg-blue-200 text-blue-700' :
@@ -17680,156 +17498,57 @@
                               c === 'green' ? 'bg-green-200 text-green-700' :
                               c === 'emerald' ? 'bg-emerald-200 text-emerald-700' : 'bg-slate-200 text-slate-700';
                           })()}`}>
-                            {AGENCY_STATUSES.find(s => s.id === projectAgency.status)?.label || projectAgency.status}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            ({relevantContacts.length} contact{relevantContacts.length !== 1 ? 's' : ''})
+                            {AGENCY_STATUSES.find(s => s.id === pa.status)?.label || pa.status}
                           </span>
                         </div>
 
+                        {/* Contacts */}
                         {relevantContacts.length > 0 ? (
-                          <div className="mb-4 p-3 bg-slate-50 rounded-lg">
-                            <div className="text-sm text-slate-600 space-y-1">
-                              <div className="flex items-start gap-2">
-                                <span className="font-medium min-w-[30px]">To:</span>
-                                <span>
-                                  {relevantContacts[0].name} {relevantContacts[0].email && `<${relevantContacts[0].email}>`}
-                                  {relevantContacts[0].role && ` - ${relevantContacts[0].role}`}
-                                </span>
-                              </div>
-                              {relevantContacts.length > 1 && (
-                                <div className="flex items-start gap-2">
-                                  <span className="font-medium min-w-[30px]">CC:</span>
-                                  <span>
-                                    {relevantContacts.slice(1).map((c, i) => (
-                                      <span key={i}>
-                                        {i > 0 && ', '}
-                                        {c.name} {c.email && `<${c.email}>`}
-                                        {c.role && ` - ${c.role}`}
-                                      </span>
-                                    ))}
-                                  </span>
-                                </div>
-                              )}
+                          <div className="p-3 bg-slate-50 rounded-lg text-sm text-slate-600 space-y-1 mb-3">
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium min-w-[30px]">To:</span>
+                              <span>{relevantContacts[0].name}{relevantContacts[0].email && ` <${relevantContacts[0].email}>`}{relevantContacts[0].role && ` — ${relevantContacts[0].role}`}</span>
                             </div>
-                          </div>
-                        ) : primaryContact ? (
-                          <div className="mb-4 p-3 bg-slate-50 rounded-lg text-sm text-slate-600">
-                            To: {primaryContact.name} {primaryContact.email && `<${primaryContact.email}>`}
-                            {primaryContact.role && ` - ${primaryContact.role}`}
+                            {relevantContacts.length > 1 && (
+                              <div className="flex items-start gap-2">
+                                <span className="font-medium min-w-[30px]">CC:</span>
+                                <span>{relevantContacts.slice(1).map((c, i) => `${i > 0 ? ', ' : ''}${c.name}${c.email ? ` <${c.email}>` : ''}${c.role ? ` — ${c.role}` : ''}`).join('')}</span>
+                              </div>
+                            )}
                           </div>
                         ) : (
-                          <div className="mb-4 text-sm text-red-600">⚠️ No contact information available</div>
+                          <div className="mb-3 text-sm text-red-600">⚠️ No contact information available</div>
                         )}
 
+                        {/* Subject */}
+                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 mb-3">
+                          <div className="text-xs font-medium text-slate-500 mb-1">Subject</div>
+                          <div className="text-sm text-slate-900">{subject}</div>
+                        </div>
+
                         {agency.instructions && (
-                          <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
+                          <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-700 mb-3">
                             📋 {agency.instructions}
                           </div>
                         )}
 
-                        {primaryContact?.email && (
-                          <div className="space-y-3">
-                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                              <div className="text-xs font-medium text-slate-500 mb-2">Subject:</div>
-                              <div className="text-sm text-slate-900">{subject}</div>
-                            </div>
-                            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                              <div className="text-xs font-medium text-slate-500 mb-2">Body:</div>
-                              <div className="text-sm text-slate-900 whitespace-pre-wrap">{body}</div>
-                            </div>
-                            {model?.photoUrl && (
-                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                                <div className="text-xs font-medium text-slate-500 mb-2">Model Photo Preview:</div>
-                                <img
-                                  src={model.photoUrl}
-                                  alt={model.name}
-                                  className="w-32 h-32 object-cover rounded-lg border border-slate-300"
-                                  onError={(e) => {
-                                    e.target.style.display = 'none';
-                                    e.target.nextSibling.style.display = 'block';
-                                  }}
-                                />
-                                <div className="text-xs text-slate-500 mt-2" style={{display: 'none'}}>
-                                  Photo link: {model.photoUrl}
-                                </div>
-                              </div>
-                            )}
-                            <div className="space-y-2">
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => {
-                                    const emailText = `To: ${primaryContact.email}${ccEmails ? `\nCC: ${ccEmails}` : ''}\nSubject: ${subject}\n\n${body}`;
-                                    copyToClipboard(emailText, index);
-                                  }}
-                                  className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                                >
-                                  {copiedIndex === index ? '✓ Copied!' : '📋 Copy Email'}
-                                </button>
-                                <a
-                                  href={mailto}
-                                  className="flex-1 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium text-center"
-                                >
-                                  📧 Open in Email
-                                </a>
-                              </div>
-                              {model?.photoUrl && (
-                                <button
-                                  onClick={() => {
-                                    // Create a temporary container to render HTML that can be copied as rich text
-                                    const tempDiv = document.createElement('div');
-                                    tempDiv.style.position = 'absolute';
-                                    tempDiv.style.left = '-9999px';
-                                    tempDiv.contentEditable = true;
-
-                                    // Build the email content with proper formatting
-                                    const bodyHtml = body.split('\n').map(line => {
-                                      return line ? '<p style="margin: 0 0 10px 0;">' + line + '</p>' : '<br>';
-                                    }).join('');
-
-                                    tempDiv.innerHTML = '<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;">' +
-                                      bodyHtml +
-                                      '<p style="margin-top: 20px;"><img src="' + model.photoUrl + '" alt="' + model.name + '" style="max-width: 400px; height: auto; border-radius: 8px;" /></p>' +
-                                      '</div>';
-
-                                    document.body.appendChild(tempDiv);
-
-                                    // Select and copy the content as rich text
-                                    const range = document.createRange();
-                                    range.selectNodeContents(tempDiv);
-                                    const selection = window.getSelection();
-                                    selection.removeAllRanges();
-                                    selection.addRange(range);
-
-                                    try {
-                                      document.execCommand('copy');
-                                      setCopiedIndex(index + '-html');
-                                      setTimeout(() => setCopiedIndex(null), 2000);
-                                    } catch (err) {
-                                      alert('Failed to copy. Please try again.');
-                                    }
-
-                                    selection.removeAllRanges();
-                                    document.body.removeChild(tempDiv);
-                                  }}
-                                  className={'w-full px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium ' + (copiedIndex === index + '-html' ? 'bg-purple-700' : '')}
-                                >
-                                  {copiedIndex === index + '-html' ? '✓ Copied!' : '🖼️ Copy Email with Photo'}
-                                </button>
-                              )}
-                            </div>
-                          </div>
+                        {primaryContact?.email ? (
+                          <a
+                            href={mailto}
+                            className="block w-full px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium text-center"
+                          >
+                            📧 Open in Email
+                          </a>
+                        ) : (
+                          <div className="text-sm text-slate-400 text-center py-2">No email address on file</div>
                         )}
                       </div>
                     );
                   })}
                 </div>
 
-                <div className="sticky bottom-0 bg-white border-t border-slate-200 p-6">
-                  <button
-                    onClick={onClose}
-                    className="w-full px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors"
-                  >
+                <div className="sticky bottom-0 bg-white border-t border-slate-200 p-4">
+                  <button onClick={onClose} className="w-full px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 text-sm">
                     Close
                   </button>
                 </div>
