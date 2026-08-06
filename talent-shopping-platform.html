@@ -18477,12 +18477,15 @@
               const existingIdx = updatedProjects.findIndex(p => p.modelId === modelId && p.territory === campaign.territory);
 
               if (existingIdx >= 0) {
-                // Merge into existing project — update entries from this campaign, add new ones
-                const merged = [...(updatedProjects[existingIdx].agencies || [])];
+                // Merge into existing project — update entries from this campaign, add new ones,
+                // and remove stale entries from this campaign that are no longer in agencyNames
+                const newEntryIds = new Set(agencyEntries.map(e => e.agencyId));
+                const merged = (updatedProjects[existingIdx].agencies || []).filter(
+                  a => a.fromCampaign !== campaign.id || newEntryIds.has(a.agencyId)
+                );
                 agencyEntries.forEach(entry => {
                   const i = merged.findIndex(a => a.agencyId === entry.agencyId);
                   if (i >= 0) {
-                    // Only overwrite if this entry was originally from this campaign
                     if (merged[i].fromCampaign === campaign.id) merged[i] = entry;
                   } else {
                     merged.push(entry);
