@@ -13359,8 +13359,24 @@
                 const data = snap.docs.map(d => ({ ...d.data(), id: d.id })).map(a => ({
                   ...a, territory: TERRITORY_MIGRATION[a.territory] || a.territory
                 }));
-                agenciesRef.current = data;
-                setFromFirebase(setAgencies, data);
+                // Deduplicate agencies by name + territory + genderDivision
+                const agencySeen = {};
+                const agencyDupIds = [];
+                data.forEach(a => {
+                  const key = `${a.name}__${a.territory}__${a.genderDivision || ''}`;
+                  if (!agencySeen[key]) {
+                    agencySeen[key] = a;
+                  } else {
+                    agencyDupIds.push(a.id);
+                  }
+                });
+                if (agencyDupIds.length > 0) {
+                  agencyDupIds.forEach(id => deleteData(COLLECTIONS.AGENCIES, id));
+                  console.log(`🧹 Removed ${agencyDupIds.length} duplicate agency doc(s):`, agencyDupIds);
+                }
+                const dedupedAgencies = data.filter(a => !agencyDupIds.includes(a.id));
+                agenciesRef.current = dedupedAgencies;
+                setFromFirebase(setAgencies, dedupedAgencies);
                 markLoaded();
                 console.log(`✅ Agencies synced: ${data.length}`);
                 // Repair any null-territory signing records that loaded before agencies
@@ -17915,7 +17931,10 @@
         function EditProjectModal({ project, models, agencies, projects, allTerritories, onClose, onSave }) {
           const [selectedModel, setSelectedModel] = useState(project.modelId);
           const [selectedTerritory, setSelectedTerritory] = useState(project.territory);
-          const [selectedAgencies, setSelectedAgencies] = useState(project.agencies.map(a => a.agencyId));
+          const [selectedAgencies, setSelectedAgencies] = useState(() => {
+            const validIds = new Set(agencies.map(a => a.id));
+            return project.agencies.map(a => a.agencyId).filter(id => validIds.has(id));
+          });
           const [overallNotes, setOverallNotes] = useState(project.overallNotes || '');
           const [selectedTiers, setSelectedTiers] = useState(['Top Tier', 'Mid Tier', 'Low Tier']);
 
