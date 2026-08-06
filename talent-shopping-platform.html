@@ -15929,6 +15929,12 @@
                     <div className="space-y-3">
                       {formData.contacts.map((contact, index) => (
                         <div key={index} className="p-3 bg-slate-50 rounded-lg">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${index === 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'}`}>
+                              {index === 0 ? 'To:' : 'CC:'}
+                            </span>
+                            <span className="text-xs text-slate-400">{index === 0 ? 'Primary recipient' : 'Carbon copy'}</span>
+                          </div>
                           <div className="flex items-start gap-3">
                             <div className="flex-1 grid md:grid-cols-3 gap-3">
                               <input
