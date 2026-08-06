@@ -13585,7 +13585,7 @@
                         {agencies.length} Agencies
                       </span>
                       <span className="px-3 py-1 bg-purple-50 text-purple-700 rounded-lg text-sm font-medium">
-                        {models.reduce((sum, m) => sum + ((m.signings || []).filter(s => s.active).length), 0)} Signings
+                        {BASE_SIGNED_MODELS.filter(s => s.status === 'signed').length} Signings
                       </span>
                       <span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium">
                         {projects.length} Projects
@@ -16530,6 +16530,7 @@
           const [filterStatus, setFilterStatus] = useState('all');
           const [sortMode, setSortMode] = useState(false);
           const [expandedModels, setExpandedModels] = useState({});
+          const [showHiddenMap, setShowHiddenMap] = useState({});
           const [draggedModelId, setDraggedModelId] = useState(null);
           const [draggedTerritoryId, setDraggedTerritoryId] = useState(null);
           const [dragOverModelId, setDragOverModelId] = useState(null);
@@ -16589,6 +16590,7 @@
                   let overallStatus = 'not-contacted';
                   if (percentage === 100) overallStatus = 'completed';
                   else if (percentage > 0) overallStatus = 'in-progress';
+                  if (project.manualStatus) overallStatus = project.manualStatus;
                   return { ...project, contacted, total, overallStatus };
                 })
                 .filter(p => filterStatus === 'all' || p.overallStatus === filterStatus)
@@ -16889,7 +16891,14 @@
                         {/* Expanded: Territory Rows */}
                         {isExpanded && (
                           <div className="border-t border-slate-100">
-                            {modelProjects.map((project, tIdx) => {
+                            {(() => {
+                              const HIDDEN_STATUSES = ['completed', 'on-hold', 'signed'];
+                              const showingHidden = showHiddenMap[model.id];
+                              const hiddenProjects = modelProjects.filter(p => HIDDEN_STATUSES.includes(p.overallStatus));
+                              const visibleProjects = showingHidden ? modelProjects : modelProjects.filter(p => !HIDDEN_STATUSES.includes(p.overallStatus));
+                              return (
+                                <>
+                                {visibleProjects.map((project, tIdx) => {
                               const isTerritoryDragging = draggedTerritoryId === project.id;
                               const isTerritoryDragOver = dragOverTerritoryId === project.id;
                               return (
@@ -16922,6 +16931,21 @@
                                 </React.Fragment>
                               );
                             })}
+                            {hiddenProjects.length > 0 && (
+                              <div
+                                className="flex items-center gap-2 px-4 py-2 border-t border-slate-100 cursor-pointer hover:bg-slate-50"
+                                onClick={() => setShowHiddenMap(prev => ({ ...prev, [model.id]: !prev[model.id] }))}
+                              >
+                                <span className="text-xs text-slate-400">
+                                  {showingHidden
+                                    ? '▲ Hide completed / on hold'
+                                    : `▼ ${hiddenProjects.length} completed / on hold — show`}
+                                </span>
+                              </div>
+                            )}
+                                </>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -16977,7 +17001,9 @@
           const statusConfig = {
             'not-contacted': { label: 'Not Contacted', className: 'bg-slate-50 text-slate-700' },
             'in-progress': { label: 'In Progress', className: 'bg-blue-50 text-blue-700' },
-            'completed': { label: 'Completed', className: 'bg-emerald-50 text-emerald-700' }
+            'completed': { label: 'Completed', className: 'bg-emerald-50 text-emerald-700' },
+            'on-hold': { label: 'On Hold', className: 'bg-amber-50 text-amber-700' },
+            'signed': { label: 'Signed', className: 'bg-purple-50 text-purple-700' },
           };
 
           const status = statusConfig[project.overallStatus] || statusConfig['not-contacted'];
@@ -17022,7 +17048,23 @@
                   {sortMode && <span className="text-slate-400 text-base cursor-grab flex-shrink-0" title="Drag to reorder territory">⠿</span>}
                   <span className="text-slate-500 flex-shrink-0">📍</span>
                   <span className="font-semibold text-slate-800 flex-shrink-0">{project.territory}</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${status.className}`}>{status.label}</span>
+                  <select
+                    className={`px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 border-0 cursor-pointer appearance-none ${status.className}`}
+                    value={project.manualStatus || project.overallStatus || 'not-contacted'}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => {
+                      e.stopPropagation();
+                      const val = e.target.value;
+                      onUpdate(project.id, { manualStatus: val === 'auto' ? null : val });
+                    }}
+                  >
+                    <option value="auto">Auto</option>
+                    <option value="not-contacted">Not Contacted</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="on-hold">On Hold</option>
+                    <option value="completed">Completed</option>
+                    <option value="signed">Signed</option>
+                  </select>
                   <span className="text-xs text-slate-500 flex-shrink-0">{contacted}/{total} contacted</span>
                   <div className="flex-1 bg-slate-100 rounded-full h-1.5 max-w-[120px]">
                     <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
