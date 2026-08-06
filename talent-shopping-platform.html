@@ -16895,54 +16895,62 @@
                               const HIDDEN_STATUSES = ['completed', 'on-hold', 'signed'];
                               const showingHidden = showHiddenMap[model.id];
                               const hiddenProjects = modelProjects.filter(p => HIDDEN_STATUSES.includes(p.overallStatus));
-                              const visibleProjects = showingHidden ? modelProjects : modelProjects.filter(p => !HIDDEN_STATUSES.includes(p.overallStatus));
+                              const visibleProjects = modelProjects.filter(p => !HIDDEN_STATUSES.includes(p.overallStatus));
+                              const renderProjectRow = (project) => {
+                                const isTerritoryDragging = draggedTerritoryId === project.id;
+                                const isTerritoryDragOver = dragOverTerritoryId === project.id;
+                                return (
+                                  <React.Fragment key={project.id}>
+                                    {isTerritoryDragOver && sortMode && dragOverTerritoryPos === 'before' && (
+                                      <div className="h-0.5 bg-blue-500 mx-3 rounded-full" />
+                                    )}
+                                    <div
+                                      draggable={sortMode}
+                                      onDragStart={sortMode ? (e) => handleTerritoryDragStart(e, project.id) : undefined}
+                                      onDragOver={sortMode ? (e) => handleTerritoryDragOver(e, project.id) : undefined}
+                                      onDrop={sortMode ? (e) => handleTerritoryDrop(e, project.id, modelProjects) : undefined}
+                                      onDragEnd={() => { setDraggedTerritoryId(null); setDragOverTerritoryId(null); setDragOverTerritoryPos('after'); }}
+                                      className={`border-b border-slate-100 last:border-0 transition-all ${isTerritoryDragging ? 'opacity-50' : ''}`}
+                                    >
+                                      <ProjectCard
+                                        project={project}
+                                        model={model}
+                                        agencies={agencies}
+                                        onEdit={() => setEditingProject(project)}
+                                        onDelete={deleteProject}
+                                        onUpdate={updateProject}
+                                        sortMode={sortMode}
+                                        compact={true}
+                                      />
+                                    </div>
+                                    {isTerritoryDragOver && sortMode && dragOverTerritoryPos === 'after' && (
+                                      <div className="h-0.5 bg-blue-500 mx-3 rounded-full" />
+                                    )}
+                                  </React.Fragment>
+                                );
+                              };
                               return (
                                 <>
-                                {visibleProjects.map((project, tIdx) => {
-                              const isTerritoryDragging = draggedTerritoryId === project.id;
-                              const isTerritoryDragOver = dragOverTerritoryId === project.id;
-                              return (
-                                <React.Fragment key={project.id}>
-                                {isTerritoryDragOver && sortMode && dragOverTerritoryPos === 'before' && (
-                                  <div className="h-0.5 bg-blue-500 mx-3 rounded-full" />
-                                )}
-                                <div
-                                  draggable={sortMode}
-                                  onDragStart={sortMode ? (e) => handleTerritoryDragStart(e, project.id) : undefined}
-                                  onDragOver={sortMode ? (e) => handleTerritoryDragOver(e, project.id) : undefined}
-                                  onDrop={sortMode ? (e) => handleTerritoryDrop(e, project.id, modelProjects) : undefined}
-                                  onDragEnd={() => { setDraggedTerritoryId(null); setDragOverTerritoryId(null); setDragOverTerritoryPos('after'); }}
-                                  className={`border-b border-slate-100 last:border-0 transition-all ${isTerritoryDragging ? 'opacity-50' : ''}`}
-                                >
-                                  <ProjectCard
-                                    project={project}
-                                    model={model}
-                                    agencies={agencies}
-                                    onEdit={() => setEditingProject(project)}
-                                    onDelete={deleteProject}
-                                    onUpdate={updateProject}
-                                    sortMode={sortMode}
-                                    compact={true}
-                                  />
-                                </div>
-                                {isTerritoryDragOver && sortMode && dragOverTerritoryPos === 'after' && (
-                                  <div className="h-0.5 bg-blue-500 mx-3 rounded-full" />
-                                )}
-                                </React.Fragment>
-                              );
-                            })}
-                            {hiddenProjects.length > 0 && (
-                              <div
-                                className="flex items-center gap-2 px-4 py-2 border-t border-slate-100 cursor-pointer hover:bg-slate-50"
-                                onClick={() => setShowHiddenMap(prev => ({ ...prev, [model.id]: !prev[model.id] }))}
-                              >
-                                <span className="text-xs text-slate-400">
-                                  {showingHidden
-                                    ? '▲ Hide completed / on hold'
-                                    : `▼ ${hiddenProjects.length} completed / on hold — show`}
-                                </span>
-                              </div>
-                            )}
+                                  {visibleProjects.map(renderProjectRow)}
+                                  {hiddenProjects.length > 0 && (
+                                    <>
+                                      <div
+                                        className="flex items-center gap-2 px-4 py-2 border-t border-slate-100 cursor-pointer hover:bg-slate-50"
+                                        onClick={() => setShowHiddenMap(prev => ({ ...prev, [model.id]: !prev[model.id] }))}
+                                      >
+                                        <span className="text-xs text-slate-400">
+                                          {showingHidden
+                                            ? '▲ Hide completed / on hold'
+                                            : `▼ ${hiddenProjects.length} completed / on hold — show`}
+                                        </span>
+                                      </div>
+                                      {showingHidden && (
+                                        <div className="border-t border-slate-100 bg-slate-50">
+                                          {hiddenProjects.map(renderProjectRow)}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
                                 </>
                               );
                             })()}
