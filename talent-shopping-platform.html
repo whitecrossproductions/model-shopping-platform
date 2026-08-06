@@ -16533,7 +16533,9 @@
           const [draggedModelId, setDraggedModelId] = useState(null);
           const [draggedTerritoryId, setDraggedTerritoryId] = useState(null);
           const [dragOverModelId, setDragOverModelId] = useState(null);
+          const [dragOverModelPos, setDragOverModelPos] = useState('after');
           const [dragOverTerritoryId, setDragOverTerritoryId] = useState(null);
+          const [dragOverTerritoryPos, setDragOverTerritoryPos] = useState('after');
           const [editingNoteModelId, setEditingNoteModelId] = useState(null);
           const [notesDraft, setNotesDraft] = useState('');
 
@@ -16624,7 +16626,9 @@
           const handleModelDragOver = (e, modelId) => {
             e.preventDefault();
             e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
             setDragOverModelId(modelId);
+            setDragOverModelPos(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
           };
           const handleModelDrop = (e, targetModelId) => {
             e.preventDefault();
@@ -16658,7 +16662,9 @@
           const handleTerritoryDragOver = (e, projectId) => {
             e.preventDefault();
             e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
             setDragOverTerritoryId(projectId);
+            setDragOverTerritoryPos(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
           };
           const handleTerritoryDrop = (e, targetProjectId, modelProjects) => {
             e.preventDefault();
@@ -16770,14 +16776,17 @@
                     const overallPct = totalAgencies > 0 ? Math.round((totalContacted / totalAgencies) * 100) : 0;
 
                     return (
+                      <React.Fragment key={model.id}>
+                      {isDragOver && sortMode && dragOverModelPos === 'before' && (
+                        <div className="h-0.5 bg-blue-500 rounded-full mx-1 my-0.5" />
+                      )}
                       <div
-                        key={model.id}
                         draggable={sortMode}
                         onDragStart={sortMode ? (e) => handleModelDragStart(e, model.id) : undefined}
                         onDragOver={sortMode ? (e) => handleModelDragOver(e, model.id) : undefined}
                         onDrop={sortMode ? (e) => handleModelDrop(e, model.id) : undefined}
-                        onDragEnd={() => { setDraggedModelId(null); setDragOverModelId(null); }}
-                        className={`bg-white rounded-lg border-2 transition-all ${isDragOver && sortMode ? 'border-blue-400 shadow-lg' : 'border-slate-200'} ${isDraggingThis ? 'opacity-50' : ''}`}
+                        onDragEnd={() => { setDraggedModelId(null); setDragOverModelId(null); setDragOverModelPos('after'); }}
+                        className={`bg-white rounded-lg border-2 transition-all border-slate-200 ${isDraggingThis ? 'opacity-50' : ''}`}
                       >
                         {/* Model Header Row */}
                         <div
@@ -16884,14 +16893,17 @@
                               const isTerritoryDragging = draggedTerritoryId === project.id;
                               const isTerritoryDragOver = dragOverTerritoryId === project.id;
                               return (
+                                <React.Fragment key={project.id}>
+                                {isTerritoryDragOver && sortMode && dragOverTerritoryPos === 'before' && (
+                                  <div className="h-0.5 bg-blue-500 mx-3 rounded-full" />
+                                )}
                                 <div
-                                  key={project.id}
                                   draggable={sortMode}
                                   onDragStart={sortMode ? (e) => handleTerritoryDragStart(e, project.id) : undefined}
                                   onDragOver={sortMode ? (e) => handleTerritoryDragOver(e, project.id) : undefined}
                                   onDrop={sortMode ? (e) => handleTerritoryDrop(e, project.id, modelProjects) : undefined}
-                                  onDragEnd={() => { setDraggedTerritoryId(null); setDragOverTerritoryId(null); }}
-                                  className={`border-b border-slate-100 last:border-0 transition-all ${isTerritoryDragOver && sortMode ? 'bg-blue-50 border-blue-200' : ''} ${isTerritoryDragging ? 'opacity-50' : ''}`}
+                                  onDragEnd={() => { setDraggedTerritoryId(null); setDragOverTerritoryId(null); setDragOverTerritoryPos('after'); }}
+                                  className={`border-b border-slate-100 last:border-0 transition-all ${isTerritoryDragging ? 'opacity-50' : ''}`}
                                 >
                                   <ProjectCard
                                     project={project}
@@ -16904,11 +16916,19 @@
                                     compact={true}
                                   />
                                 </div>
+                                {isTerritoryDragOver && sortMode && dragOverTerritoryPos === 'after' && (
+                                  <div className="h-0.5 bg-blue-500 mx-3 rounded-full" />
+                                )}
+                                </React.Fragment>
                               );
                             })}
                           </div>
                         )}
                       </div>
+                      {isDragOver && sortMode && dragOverModelPos === 'after' && (
+                        <div className="h-0.5 bg-blue-500 rounded-full mx-1 my-0.5" />
+                      )}
+                      </React.Fragment>
                     );
                   })}
                 </div>
