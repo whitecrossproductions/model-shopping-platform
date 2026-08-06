@@ -15106,7 +15106,10 @@
             return acc;
           }, {});
 
-          const mergedAgenciesList = Object.values(mergedAgencies).sort((a, b) => a.name.localeCompare(b.name));
+          const TIER_ORDER = { 'Top Tier': 1, 'Mid Tier': 2, 'Low Tier': 3 };
+          const mergedAgenciesList = Object.values(mergedAgencies).sort((a, b) =>
+            ((TIER_ORDER[a.tier] || 4) - (TIER_ORDER[b.tier] || 4)) || a.name.localeCompare(b.name)
+          );
 
           // Calculate tier counts based on current filters (search + territory only)
           const getFilteredAgenciesForCounting = () => {
@@ -15561,8 +15564,9 @@
             return matchesTerritory && matchesSearch;
           });
 
+          const TIER_ORDER = { 'Top Tier': 1, 'Mid Tier': 2, 'Low Tier': 3 };
           const agenciesList = filteredAgencies.sort((a, b) =>
-            a.name.localeCompare(b.name)
+            ((TIER_ORDER[a.tier] || 4) - (TIER_ORDER[b.tier] || 4)) || a.name.localeCompare(b.name)
           );
 
           return (
@@ -18910,10 +18914,16 @@
             .filter(Boolean)
             .sort((a, b) => a.name.localeCompare(b.name));
 
-          const territoryAgencyNames = new Set(
-            agencies.filter(a => a.territory === campaign.territory).map(a => a.name)
-          );
-          const agencyNames = (campaign.agencyNames || []).filter(n => territoryAgencyNames.has(n));
+          const TIER_ORDER = { 'Top Tier': 1, 'Mid Tier': 2, 'Low Tier': 3 };
+          const territoryAgencies = agencies.filter(a => a.territory === campaign.territory);
+          const territoryAgencyNames = new Set(territoryAgencies.map(a => a.name));
+          const agencyTier = (name) => {
+            const a = territoryAgencies.find(a => a.name === name);
+            return TIER_ORDER[a?.tier] || 4;
+          };
+          const agencyNames = (campaign.agencyNames || [])
+            .filter(n => territoryAgencyNames.has(n))
+            .sort((a, b) => (agencyTier(a) - agencyTier(b)) || a.localeCompare(b));
 
           const getStatus = (modelId, agencyName) =>
             campaign.statuses?.[`${modelId}__${agencyName}`]?.status || 'not-contacted';
