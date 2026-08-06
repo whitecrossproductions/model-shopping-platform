@@ -13391,7 +13391,22 @@
                     statusUpdatedAt: agency.statusUpdatedAt || agency.contactedDate || new Date().toISOString()
                   }))
                 }));
-                setFromFirebase(setProjects, data);
+                // Deduplicate: merge any two docs with the same modelId + territory
+                const seen = {};
+                const deduped = [];
+                data.forEach(p => {
+                  const key = `${p.modelId}__${p.territory}`;
+                  if (!seen[key]) {
+                    seen[key] = p;
+                    deduped.push(p);
+                  } else {
+                    // Merge agencies from the duplicate into the keeper
+                    const keeper = seen[key];
+                    const existingIds = new Set(keeper.agencies.map(a => a.agencyId));
+                    p.agencies.forEach(a => { if (!existingIds.has(a.agencyId)) keeper.agencies.push(a); });
+                  }
+                });
+                setFromFirebase(setProjects, deduped);
                 markLoaded();
                 console.log(`✅ Projects synced: ${data.length}`);
               }, err => { console.error('Projects listener error:', err); markLoaded(); }));
