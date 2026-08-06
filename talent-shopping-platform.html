@@ -16907,7 +16907,7 @@
                         {isExpanded && (
                           <div className="border-t border-slate-100">
                             {(() => {
-                              const HIDDEN_STATUSES = ['completed', 'on-hold', 'signed'];
+                              const HIDDEN_STATUSES = ['completed', 'on-hold', 'signed', 'passed'];
                               const showingHidden = showHiddenMap[model.id];
                               const hiddenProjects = modelProjects.filter(p => HIDDEN_STATUSES.includes(p.overallStatus));
                               const visibleProjects = modelProjects.filter(p => !HIDDEN_STATUSES.includes(p.overallStatus));
@@ -17027,6 +17027,7 @@
             'completed': { label: 'Completed', className: 'bg-emerald-50 text-emerald-700' },
             'on-hold': { label: 'On Hold', className: 'bg-amber-50 text-amber-700' },
             'signed': { label: 'Signed', className: 'bg-purple-50 text-purple-700' },
+            'passed': { label: 'Passed', className: 'bg-red-50 text-red-600' },
           };
 
           const status = statusConfig[project.overallStatus] || statusConfig['not-contacted'];
@@ -17087,6 +17088,7 @@
                     <option value="on-hold">On Hold</option>
                     <option value="completed">Completed</option>
                     <option value="signed">Signed</option>
+                    <option value="passed">Passed</option>
                   </select>
                   <span className="text-xs text-slate-500 flex-shrink-0">{contacted}/{total} contacted</span>
                   <div className="flex-1 bg-slate-100 rounded-full h-1.5 max-w-[120px]">
