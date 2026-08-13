@@ -15791,7 +15791,7 @@
           const addContact = () => {
             setFormData({
               ...formData,
-              contacts: [...formData.contacts, { name: '', email: '', role: '' }]
+              contacts: [...formData.contacts, { name: '', email: '', role: '', emailType: 'cc' }]
             });
           };
 
@@ -15929,13 +15929,15 @@
                     <div className="space-y-3">
                       {formData.contacts.map((contact, index) => (
                         <div key={index} className="p-3 bg-slate-50 rounded-lg">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${index === 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'}`}>
-                              {index === 0 ? 'To:' : 'CC:'}
-                            </span>
-                            <span className="text-xs text-slate-400">{index === 0 ? 'Primary recipient' : 'Carbon copy'}</span>
-                          </div>
                           <div className="flex items-start gap-3">
+                            <button
+                              type="button"
+                              onClick={() => updateContact(index, 'emailType', (contact.emailType || 'to') === 'to' ? 'cc' : 'to')}
+                              className={`mt-1 flex-shrink-0 text-xs font-bold px-2 py-1 rounded border ${(contact.emailType || 'to') === 'to' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-slate-100 text-slate-500 border-slate-300'}`}
+                              title="Click to toggle To / CC"
+                            >
+                              {(contact.emailType || 'to') === 'to' ? 'To' : 'CC'}
+                            </button>
                             <div className="flex-1 grid md:grid-cols-3 gap-3">
                               <input
                                 type="text"
@@ -17509,9 +17511,18 @@
                         (role.includes('MALE') && modelGender === 'MALE');
                     });
                     const relevantContacts = genderMatched.length > 0 ? genderMatched : allContacts;
-                    const primaryContact = relevantContacts[0];
-                    const ccEmails = relevantContacts.slice(1).map(c => c.email).filter(Boolean).join(',');
-                    const mailto = `mailto:${primaryContact?.email || ''}?${ccEmails ? `cc=${encodeURIComponent(ccEmails)}&` : ''}subject=${encodeURIComponent(subject)}`;
+                    // Use emailType if set, otherwise fall back to first=To rest=CC
+                    const hasEmailTypes = relevantContacts.some(c => c.emailType);
+                    const toContacts = hasEmailTypes
+                      ? relevantContacts.filter(c => (c.emailType || 'to') === 'to')
+                      : [relevantContacts[0]].filter(Boolean);
+                    const ccContacts = hasEmailTypes
+                      ? relevantContacts.filter(c => c.emailType === 'cc')
+                      : relevantContacts.slice(1);
+                    const primaryContact = toContacts[0] || relevantContacts[0];
+                    const toEmails = toContacts.map(c => c.email).filter(Boolean).join(',');
+                    const ccEmails = ccContacts.map(c => c.email).filter(Boolean).join(',');
+                    const mailto = `mailto:${toEmails}?${ccEmails ? `cc=${encodeURIComponent(ccEmails)}&` : ''}subject=${encodeURIComponent(subject)}`;
 
                     return (
                       <div key={pa.agencyId}>
@@ -17536,14 +17547,16 @@
                         {/* Contacts */}
                         {relevantContacts.length > 0 ? (
                           <div className="p-3 bg-slate-50 rounded-lg text-sm text-slate-600 space-y-1 mb-3">
-                            <div className="flex items-start gap-2">
-                              <span className="font-medium min-w-[30px]">To:</span>
-                              <span>{relevantContacts[0].name}{relevantContacts[0].email && ` <${relevantContacts[0].email}>`}{relevantContacts[0].role && ` — ${relevantContacts[0].role}`}</span>
-                            </div>
-                            {relevantContacts.length > 1 && (
+                            {toContacts.length > 0 && (
+                              <div className="flex items-start gap-2">
+                                <span className="font-medium min-w-[30px]">To:</span>
+                                <span>{toContacts.map((c, i) => `${i > 0 ? ', ' : ''}${c.name}${c.email ? ` <${c.email}>` : ''}${c.role ? ` — ${c.role}` : ''}`).join('')}</span>
+                              </div>
+                            )}
+                            {ccContacts.length > 0 && (
                               <div className="flex items-start gap-2">
                                 <span className="font-medium min-w-[30px]">CC:</span>
-                                <span>{relevantContacts.slice(1).map((c, i) => `${i > 0 ? ', ' : ''}${c.name}${c.email ? ` <${c.email}>` : ''}${c.role ? ` — ${c.role}` : ''}`).join('')}</span>
+                                <span>{ccContacts.map((c, i) => `${i > 0 ? ', ' : ''}${c.name}${c.email ? ` <${c.email}>` : ''}${c.role ? ` — ${c.role}` : ''}`).join('')}</span>
                               </div>
                             )}
                           </div>
