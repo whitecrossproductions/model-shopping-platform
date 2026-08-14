@@ -17519,14 +17519,9 @@
                         (role.includes('MALE') && modelGender === 'MALE');
                     });
                     const relevantContacts = genderMatched.length > 0 ? genderMatched : allContacts;
-                    // Use emailType if set, otherwise fall back to first=To rest=CC
-                    const hasEmailTypes = relevantContacts.some(c => c.emailType);
-                    const toContacts = hasEmailTypes
-                      ? relevantContacts.filter(c => (c.emailType || 'to') === 'to')
-                      : [relevantContacts[0]].filter(Boolean);
-                    const ccContacts = hasEmailTypes
-                      ? relevantContacts.filter(c => c.emailType === 'cc')
-                      : relevantContacts.slice(1);
+                    // emailType defaults to 'to' when not explicitly set
+                    const toContacts = relevantContacts.filter(c => (c.emailType || 'to') === 'to');
+                    const ccContacts = relevantContacts.filter(c => c.emailType === 'cc');
                     const primaryContact = toContacts[0] || relevantContacts[0];
                     const toEmails = toContacts.map(c => c.email).filter(Boolean).join(',');
                     const ccEmails = ccContacts.map(c => c.email).filter(Boolean).join(',');
