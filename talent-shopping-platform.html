@@ -13296,6 +13296,7 @@
           const [loading, setLoading] = useState(true);
           const [excludedMarkets, setExcludedMarkets] = useState({});
           const [editingMarkets, setEditingMarkets] = useState(null);
+          const [navTarget, setNavTarget] = useState(null);
           const [todos, setTodos] = useState([]);
           const [campaigns, setCampaigns] = useState([]);
           const firebaseUpdatingRef = React.useRef(false);
@@ -13679,12 +13680,8 @@
                     models={models}
                     agencies={agencies}
                     projects={projects}
-                    setProjects={setProjects}
                     setActiveTab={setActiveTab}
-                    excludedMarkets={excludedMarkets}
-                    setExcludedMarkets={setExcludedMarkets}
-                    editingMarkets={editingMarkets}
-                    setEditingMarkets={setEditingMarkets}
+                    setNavTarget={setNavTarget}
                   />
                 )}
                 {activeTab === 'models' && (
@@ -13707,6 +13704,8 @@
                     agencies={agencies}
                     projects={projects}
                     setProjects={setProjects}
+                    navTarget={navTarget}
+                    setNavTarget={setNavTarget}
                   />
                 )}
                 {activeTab === 'campaigns' && (
@@ -13894,430 +13893,253 @@
         }
 
         // Dashboard Component
-        function Dashboard({ models, agencies, projects, setProjects, setActiveTab, excludedMarkets, setExcludedMarkets, editingMarkets, setEditingMarkets }) {
-          const allTerritories = getAllTerritories(agencies);
+        function Dashboard({ models, agencies, projects, setActiveTab, setNavTarget }) {
+          const PRIMARY_MARKETS = ['Los Angeles', 'New York', 'Paris', 'Milan', 'London'];
 
-          // Group projects by model
-          const modelProjects = models.map(model => {
-            const modelProjectList = projects.filter(p => p.modelId === model.id);
-            const totalAgencies = modelProjectList.reduce((sum, p) => sum + p.agencies.length, 0);
-            const contactedAgencies = modelProjectList.reduce((sum, p) =>
-              sum + p.agencies.filter(a => a.status !== 'not-contacted').length, 0
+          const getDaysAgo = (dateStr) => {
+            if (!dateStr) return null;
+            const diff = Date.now() - new Date(dateStr).getTime();
+            return Math.floor(diff / (1000 * 60 * 60 * 24));
+          };
+
+          const navigate = (modelId) => {
+            setNavTarget({ modelId });
+            setActiveTab('projects');
+          };
+
+          // --- Stat cards ---
+          const activeModels = models.filter(m => m.modelStatus !== 'inactive' && m.modelStatus !== 'on-hold');
+
+          const now = new Date();
+          const thisMonthCount = projects.filter(p => {
+            const d = new Date(parseInt(p.id));
+            return !isNaN(d.getTime()) && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+          }).length;
+          const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const lastMonthCount = projects.filter(p => {
+            const d = new Date(parseInt(p.id));
+            return !isNaN(d.getTime()) && d.getMonth() === lastMonthDate.getMonth() && d.getFullYear() === lastMonthDate.getFullYear();
+          }).length;
+
+          // --- Follow-up radar ---
+          const followUpGroups = [];
+          projects.forEach(project => {
+            const model = models.find(m => m.id === project.modelId);
+            if (!model) return;
+            const waiting = (project.agencies || []).filter(pa => {
+              if (pa.status !== 'shopped' && pa.status !== 'met-waiting') return false;
+              const days = getDaysAgo(pa.statusUpdatedAt || pa.contactedDate);
+              return days !== null && days >= 3;
+            });
+            if (waiting.length === 0) return;
+            const oldestDays = Math.max(...waiting.map(pa => getDaysAgo(pa.statusUpdatedAt || pa.contactedDate) || 0));
+            const agencyNames = waiting.map(pa => {
+              const ag = agencies.find(a => a.id === pa.agencyId);
+              return ag ? ag.name : null;
+            }).filter(Boolean);
+            followUpGroups.push({ project, model, waiting, oldestDays, agencyNames });
+          });
+          followUpGroups.sort((a, b) => b.oldestDays - a.oldestDays);
+
+          // --- Unsigned primary markets ---
+          const unsignedByModel = activeModels.map(model => {
+            const signedTerritories = new Set(
+              BASE_SIGNED_MODELS
+                .filter(sm => sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() && sm.status === 'signed')
+                .map(sm => sm.territory)
             );
-            const territories = [...new Set(modelProjectList.map(p => p.territory))];
+            const unsignedPrimary = PRIMARY_MARKETS.filter(t => !signedTerritories.has(t));
+            return { model, unsignedPrimary };
+          }).filter(x => x.unsignedPrimary.length > 0);
 
-            return {
-              model,
-              projects: modelProjectList,
-              totalAgencies,
-              contactedAgencies,
-              territories,
-              responseRate: totalAgencies > 0 ? Math.round((contactedAgencies / totalAgencies) * 100) : 0
-            };
-          }).filter(mp => mp.projects.length > 0);
+          // --- Shopping history ---
+          const projectsByMonth = {};
+          projects.forEach(project => {
+            const d = new Date(parseInt(project.id));
+            if (isNaN(d.getTime())) return;
+            const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}`;
+            const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            if (!projectsByMonth[key]) projectsByMonth[key] = { key, label, projects: [] };
+            projectsByMonth[key].projects.push({ project, date: d });
+          });
+          const sortedMonths = Object.values(projectsByMonth).sort((a, b) => b.key.localeCompare(a.key));
 
-          const totalAgenciesInProjects = projects.reduce((sum, c) => sum + c.agencies.length, 0);
-          const contactedTotal = projects.reduce((sum, c) =>
-            sum + c.agencies.filter(a => a.status !== 'not-contacted').length, 0
-          );
-          const uniqueTerritories = [...new Set(projects.map(p => p.territory))].length;
+          // Within each month, group by model
+          const groupByModel = (monthProjects) => {
+            const byModel = {};
+            monthProjects.forEach(({ project, date }) => {
+              const model = models.find(m => m.id === project.modelId);
+              if (!model) return;
+              if (!byModel[model.id]) byModel[model.id] = { model, entries: [] };
+              byModel[model.id].entries.push({ project, date });
+            });
+            return Object.values(byModel).sort((a, b) => {
+              const aLatest = Math.max(...a.entries.map(e => e.date.getTime()));
+              const bLatest = Math.max(...b.entries.map(e => e.date.getTime()));
+              return bLatest - aLatest;
+            });
+          };
+
+          const statusDotColor = (status) => {
+            if (status === 'shopped' || status === 'met-waiting') return '#EF9F27';
+            if (status === 'signed' || status === 'completed') return '#639922';
+            if (status === 'passed') return '#E24B4A';
+            return '#888780';
+          };
+
+          const formatDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
           return (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-lg border border-slate-200 p-6">
-                  <p className="text-sm text-slate-600 mb-1">Total Projects</p>
-                  <p className="text-3xl font-bold text-slate-900">{projects.length}</p>
+
+              {/* Stat bar */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-white rounded-lg border border-slate-200 p-5">
+                  <p className="text-sm text-slate-500 mb-1">Active models</p>
+                  <p className="text-3xl font-semibold text-slate-900">{activeModels.length}</p>
                 </div>
-                <div className="bg-white rounded-lg border border-slate-200 p-6">
-                  <p className="text-sm text-slate-600 mb-1">Agencies in Projects</p>
-                  <p className="text-3xl font-bold text-blue-600">{totalAgenciesInProjects}</p>
+                <div className="bg-white rounded-lg border border-slate-200 p-5">
+                  <p className="text-sm text-slate-500 mb-1">Follow-ups needed</p>
+                  <p className="text-3xl font-semibold text-amber-600">{followUpGroups.length}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">no response in 3+ days</p>
                 </div>
-                <div className="bg-white rounded-lg border border-slate-200 p-6">
-                  <p className="text-sm text-slate-600 mb-1">Contacted</p>
-                  <p className="text-3xl font-bold text-emerald-600">{contactedTotal}</p>
-                </div>
-                <div className="bg-white rounded-lg border border-slate-200 p-6">
-                  <p className="text-sm text-slate-600 mb-1">Territories</p>
-                  <p className="text-3xl font-bold text-amber-600">{uniqueTerritories}</p>
+                <div className="bg-white rounded-lg border border-slate-200 p-5">
+                  <p className="text-sm text-slate-500 mb-1">Shoppings this month</p>
+                  <p className="text-3xl font-semibold text-slate-900">{thisMonthCount}</p>
+                  {lastMonthCount > 0 && <p className="text-xs text-slate-400 mt-0.5">{lastMonthCount} last month</p>}
                 </div>
               </div>
 
-              <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-slate-900">Model Shopping Overview</h2>
-                  <button
-                    onClick={() => setActiveTab('projects')}
-                    className="text-sm text-blue-600 hover:text-blue-700"
-                  >
-                    View All Projects →
-                  </button>
+              {/* Middle row */}
+              <div className="grid grid-cols-2 gap-6">
+
+                {/* Follow-up radar */}
+                <div className="bg-white rounded-lg border border-slate-200 p-5">
+                  <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <span className="text-amber-500">⏰</span> Follow-up radar
+                  </h2>
+                  {followUpGroups.length === 0 ? (
+                    <p className="text-sm text-slate-400 py-4 text-center">All caught up — no pending follow-ups</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {followUpGroups.map(({ project, model, waiting, oldestDays, agencyNames }) => (
+                        <div
+                          key={project.id}
+                          className={`rounded-lg p-3 border ${oldestDays >= 5 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-slate-900">{model.name} in {project.territory}</span>
+                            <span className={`text-xs font-medium ${oldestDays >= 5 ? 'text-amber-600' : 'text-slate-400'}`}>{oldestDays}d</span>
+                          </div>
+                          <p className="text-xs text-slate-500 mb-2">
+                            {waiting.length} {waiting.length === 1 ? 'agency hasn\'t' : 'agencies haven\'t'} responded
+                            {agencyNames.length > 0 && ` — ${agencyNames.slice(0, 3).join(', ')}${agencyNames.length > 3 ? ` +${agencyNames.length - 3}` : ''}`}
+                          </p>
+                          <button
+                            onClick={() => navigate(model.id)}
+                            className="text-xs text-blue-600 border border-blue-200 rounded px-2 py-1 hover:bg-blue-50 transition-colors"
+                          >
+                            → Go to project
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {modelProjects.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">
-                    <p>No projects yet. Create your first project to get started!</p>
-                    <button
-                      onClick={() => setActiveTab('projects')}
-                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Create Project
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                    {modelProjects.map(mp => (
-                      <div key={mp.model.id} className="border border-slate-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                        <div className="flex items-start gap-4">
-                          {mp.model.photoUrl && (
-                            <img
-                              src={mp.model.photoUrl}
-                              alt={mp.model.name}
-                              className="w-16 h-16 rounded-lg object-cover"
-                              onError={(e) => e.target.style.display = 'none'}
-                            />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between mb-2">
-                              <div>
-                                <h3 className="font-semibold text-slate-900">{mp.model.name}</h3>
-                                <p className="text-sm text-slate-500 capitalize">{mp.model.gender}</p>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-2xl font-bold text-blue-600">{mp.responseRate}%</div>
-                                <div className="text-xs text-slate-500">contacted</div>
-                              </div>
-                            </div>
 
-                            <div className="mb-3">
-                              <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden mb-2">
-                                <div
-                                  className="bg-blue-600 h-full rounded-full transition-all"
-                                  style={{ width: `${Math.min(mp.responseRate, 100)}%` }}
-                                />
-                              </div>
-                              <div className="text-xs text-slate-600">
-                                {mp.contactedAgencies} of {mp.totalAgencies} agencies contacted across {mp.territories.length} {mp.territories.length === 1 ? 'territory' : 'territories'}
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              {mp.projects.map(project => {
-                                const projectAgencies = project.agencies.length;
-                                const projectContacted = project.agencies.filter(a => a.status !== 'not-contacted').length;
-                                const projectRate = projectAgencies > 0 ? Math.round((projectContacted / projectAgencies) * 100) : 0;
-
-                                return (
-                                  <div key={project.id} className="flex items-center gap-3 text-sm bg-slate-50 rounded p-2">
-                                    <div className="font-medium text-slate-700 min-w-[120px]">
-                                      {project.territory}
-                                    </div>
-                                    <div className="flex-1 flex items-center gap-2">
-                                      <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                                        <div
-                                          className="bg-emerald-500 h-full rounded-full transition-all"
-                                          style={{ width: `${Math.min(projectRate, 100)}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-xs text-slate-600 w-16">
-                                        {projectContacted}/{projectAgencies}
-                                      </span>
-                                    </div>
-                                    <div className="flex gap-1">
-                                      {project.agencies.slice(0, 3).map((agency, idx) => {
-                                        const agencyData = agencies.find(a => a.id === agency.agencyId);
-                                        const statusObj = AGENCY_STATUSES.find(s => s.id === agency.status);
-                                        const c = statusObj?.color || 'slate';
-                                        const statusColor = c === 'slate' ? 'bg-slate-400' :
-                                          c === 'blue' ? 'bg-blue-400' :
-                                          c === 'yellow' ? 'bg-yellow-400' :
-                                          c === 'orange' ? 'bg-orange-400' :
-                                          c === 'red' ? 'bg-red-400' :
-                                          c === 'green' ? 'bg-green-400' :
-                                          c === 'emerald' ? 'bg-emerald-400' : 'bg-slate-400';
-                                        return (
-                                          <div
-                                            key={idx}
-                                            className={`w-2 h-2 rounded-full ${statusColor}`}
-                                            title={agencyData?.name || 'Agency'}
-                                          />
-                                        );
-                                      })}
-                                      {project.agencies.length > 3 && (
-                                        <div className="text-xs text-slate-400 ml-1">
-                                          +{project.agencies.length - 3}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                {/* Unsigned primary markets */}
+                <div className="bg-white rounded-lg border border-slate-200 p-5">
+                  <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <span className="text-blue-500">📍</span> Unsigned primary markets
+                  </h2>
+                  {unsignedByModel.length === 0 ? (
+                    <p className="text-sm text-slate-400 py-4 text-center">All primary markets signed across all models</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {unsignedByModel.map(({ model, unsignedPrimary }) => (
+                        <div key={model.id}>
+                          <p className="text-xs font-medium text-slate-700 mb-2">{model.name}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {unsignedPrimary.map(territory => {
+                              const proj = projects.find(p => p.modelId === model.id && p.territory === territory);
+                              return (
+                                <button
+                                  key={territory}
+                                  onClick={() => navigate(model.id)}
+                                  className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-medium hover:bg-blue-100 transition-colors flex items-center gap-1"
+                                >
+                                  {territory} {proj ? '→' : '＋'}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Shopping history */}
+              <div className="bg-white rounded-lg border border-slate-200 p-5">
+                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                  <span className="text-slate-400">🕘</span> Shopping history
+                </h2>
+                {sortedMonths.length === 0 ? (
+                  <p className="text-sm text-slate-400 py-4 text-center">No shoppings recorded yet</p>
+                ) : (
+                  <div className="space-y-6">
+                    {sortedMonths.map(({ key, label, projects: monthProjects }) => {
+                      const modelGroups = groupByModel(monthProjects);
+                      return (
+                        <div key={key}>
+                          <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">
+                            {label} · {monthProjects.length} {monthProjects.length === 1 ? 'shopping' : 'shoppings'}
+                          </p>
+                          <div className="space-y-2">
+                            {modelGroups.map(({ model, entries }) => (
+                              <div key={model.id} className="bg-slate-50 rounded-lg overflow-hidden border border-slate-100">
+                                <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
+                                  <span className="text-sm font-medium text-slate-800">{model.name}</span>
+                                  <span className="text-xs text-slate-400">
+                                    {entries.length > 1
+                                      ? `${formatDate(entries[entries.length-1].date)} – ${formatDate(entries[0].date)}`
+                                      : formatDate(entries[0].date)}
+                                  </span>
+                                </div>
+                                <div className="px-3 py-2 space-y-2">
+                                  {entries.map(({ project, date }) => (
+                                    <div key={project.id}>
+                                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">{project.territory}</p>
+                                      <div className="flex flex-wrap gap-3">
+                                        {(project.agencies || []).map((pa, idx) => {
+                                          const ag = agencies.find(a => a.id === pa.agencyId);
+                                          if (!ag) return null;
+                                          return (
+                                            <span key={idx} className="flex items-center gap-1.5 text-xs text-slate-600">
+                                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: statusDotColor(pa.status), display: 'inline-block', flexShrink: 0 }} />
+                                              {ag.name}
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Suggested Markets */}
-              <div className="bg-amber-50 rounded-lg border-2 border-amber-200 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-2xl">💡</span>
-                  <h2 className="text-lg font-semibold text-amber-900">Suggested Markets</h2>
-                </div>
-                <p className="text-sm text-amber-800 mb-4">
-                  <span className="font-semibold">Top Markets</span> (amber) and <span className="font-semibold">Secondary Markets</span> (blue) where your models haven't been shopped yet
-                </p>
-                <div className="space-y-3">
-                  {models.map(model => {
-                    // Get signed territories for this model
-                    const signedTerritories = BASE_SIGNED_MODELS
-                      .filter(sm =>
-                        sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() &&
-                        sm.status === 'signed'
-                      )
-                      .map(sm => sm.territory);
-
-                    // Get territories where model has projects
-                    const shoppedTerritories = projects
-                      .filter(p => p.modelId === model.id)
-                      .map(p => p.territory);
-
-                    // Top markets (priority)
-                    const topMarkets = ['Los Angeles', 'New York', 'Paris', 'Milan', 'London'];
-
-                    // Secondary markets
-                    const secondaryMarkets = ['Germany', 'San Diego', 'Seattle', 'Miami', 'Chicago', 'Canada', 'North Carolina'];
-
-                    // Get excluded markets for this model
-                    const modelExcludedMarkets = excludedMarkets[model.id] || [];
-
-                    // Find missing top markets (excluding user-hidden ones)
-                    const missingTopMarkets = topMarkets.filter(market =>
-                      !signedTerritories.includes(market) &&
-                      !shoppedTerritories.includes(market) &&
-                      !modelExcludedMarkets.includes(market)
-                    );
-
-                    // Find missing secondary markets (excluding user-hidden ones)
-                    const missingSecondaryMarkets = secondaryMarkets.filter(market =>
-                      !signedTerritories.includes(market) &&
-                      !shoppedTerritories.includes(market) &&
-                      !modelExcludedMarkets.includes(market)
-                    );
-
-                    // All available markets for editing
-                    const allAvailableTopMarkets = topMarkets.filter(market =>
-                      !signedTerritories.includes(market) && !shoppedTerritories.includes(market)
-                    );
-                    const allAvailableSecondaryMarkets = secondaryMarkets.filter(market =>
-                      !signedTerritories.includes(market) && !shoppedTerritories.includes(market)
-                    );
-
-                    // Only show if there are missing markets or we're editing this model
-                    const hasMarkets = missingTopMarkets.length > 0 || missingSecondaryMarkets.length > 0;
-                    const isEditing = editingMarkets === model.id;
-
-                    if (!hasMarkets && !isEditing) return null;
-
-                    return (
-                      <div key={model.id} className="bg-white rounded-lg p-4 border border-amber-200">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-900">{model.name}</span>
-                            <span className="text-xs text-slate-500 capitalize">({model.gender})</span>
-                          </div>
-                          <div className="flex gap-2">
-                            {!isEditing ? (
-                              <>
-                                <button
-                                  onClick={() => setEditingMarkets(model.id)}
-                                  className="text-xs px-3 py-1 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
-                                >
-                                  ✏️ Edit Markets
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    const allMissingMarkets = [...missingTopMarkets, ...missingSecondaryMarkets];
-                                    const newProjects = allMissingMarkets
-                                      .filter(market => {
-                                        // Skip if a project already exists for this model+territory
-                                        return !projects.some(p => p.modelId === model.id && p.territory === market);
-                                      })
-                                      .map(market => {
-                                        // Get all agencies in this territory
-                                        const territorAgencies = agencies.filter(a => a.territory === market);
-                                        return {
-                                          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                                          modelId: model.id,
-                                          territory: market,
-                                          agencies: territorAgencies.map(a => ({
-                                            agencyId: a.id,
-                                            status: 'not-contacted',
-                                            sentDate: null,
-                                            notes: '',
-                                            contactedDate: null
-                                          })),
-                                          overallNotes: '',
-                                          createdDate: new Date().toISOString()
-                                        };
-                                      })
-                                      .filter(p => p.agencies.length > 0);
-                                    if (newProjects.length > 0) {
-                                      setProjects([...projects, ...newProjects]);
-                                      alert(`Created ${newProjects.length} project(s) for ${model.name}!`);
-                                      setActiveTab('projects');
-                                    } else {
-                                      alert('No agencies found in these territories yet. Add agencies first.');
-                                    }
-                                  }}
-                                  className="text-xs px-3 py-1 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
-                                >
-                                  Create Project
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    const allMarkets = [...topMarkets, ...secondaryMarkets];
-                                    setExcludedMarkets({
-                                      ...excludedMarkets,
-                                      [model.id]: allMarkets
-                                    });
-                                  }}
-                                  className="text-xs px-3 py-1 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
-                                >
-                                  🗑️ Remove
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => setEditingMarkets(null)}
-                                className="text-xs px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                              >
-                                ✓ Done
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {!isEditing ? (
-                          <div className="space-y-2">
-                            {missingTopMarkets.length > 0 && (
-                              <div className="flex flex-wrap gap-2">
-                                {missingTopMarkets.map(market => (
-                                  <span key={market} className="px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs font-medium border border-amber-300">
-                                    ⭐ {market}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {missingSecondaryMarkets.length > 0 && (
-                              <div className="flex flex-wrap gap-2">
-                                {missingSecondaryMarkets.map(market => (
-                                  <span key={market} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium border border-blue-300">
-                                    {market}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            <p className="text-xs text-slate-600">
-                              Select which markets to show suggestions for:
-                            </p>
-                            {allAvailableTopMarkets.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-amber-800 mb-2">Top Markets</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {allAvailableTopMarkets.map(market => {
-                                    const isExcluded = modelExcludedMarkets.includes(market);
-                                    return (
-                                      <button
-                                        key={market}
-                                        onClick={() => {
-                                          const newExcluded = isExcluded
-                                            ? modelExcludedMarkets.filter(m => m !== market)
-                                            : [...modelExcludedMarkets, market];
-                                          setExcludedMarkets({
-                                            ...excludedMarkets,
-                                            [model.id]: newExcluded
-                                          });
-                                        }}
-                                        className={`px-2 py-1 rounded text-xs font-medium border transition-all ${
-                                          isExcluded
-                                            ? 'bg-slate-100 text-slate-400 border-slate-300 line-through'
-                                            : 'bg-amber-100 text-amber-800 border-amber-300'
-                                        }`}
-                                      >
-                                        {isExcluded ? '☐' : '☑'} ⭐ {market}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                            {allAvailableSecondaryMarkets.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-blue-800 mb-2">Secondary Markets</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {allAvailableSecondaryMarkets.map(market => {
-                                    const isExcluded = modelExcludedMarkets.includes(market);
-                                    return (
-                                      <button
-                                        key={market}
-                                        onClick={() => {
-                                          const newExcluded = isExcluded
-                                            ? modelExcludedMarkets.filter(m => m !== market)
-                                            : [...modelExcludedMarkets, market];
-                                          setExcludedMarkets({
-                                            ...excludedMarkets,
-                                            [model.id]: newExcluded
-                                          });
-                                        }}
-                                        className={`px-2 py-1 rounded text-xs font-medium border transition-all ${
-                                          isExcluded
-                                            ? 'bg-slate-100 text-slate-400 border-slate-300 line-through'
-                                            : 'bg-blue-100 text-blue-800 border-blue-300'
-                                        }`}
-                                      >
-                                        {isExcluded ? '☐' : '☑'} {market}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }).filter(Boolean)}
-                  {models.every(model => {
-                    const signedTerritories = BASE_SIGNED_MODELS
-                      .filter(sm =>
-                        sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() &&
-                        sm.status === 'signed'
-                      )
-                      .map(sm => sm.territory);
-                    const shoppedTerritories = projects
-                      .filter(p => p.modelId === model.id)
-                      .map(p => p.territory);
-                    const topMarkets = ['Los Angeles', 'New York', 'Paris', 'Milan', 'London'];
-                    const missingMarkets = topMarkets.filter(market =>
-                      !signedTerritories.includes(market) && !shoppedTerritories.includes(market)
-                    );
-                    return missingMarkets.length === 0;
-                  }) && (
-                    <div className="text-center py-4 text-amber-700">
-                      <span className="text-2xl mb-2 block">✓</span>
-                      <p className="text-sm">All your models are covered in the top markets!</p>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           );
+
         }
 
         // Models Component
@@ -16432,7 +16254,7 @@
         }
 
         // Projects Component with NEW STRUCTURE
-        function Projects({ models, agencies, projects, setProjects }) {
+        function Projects({ models, agencies, projects, setProjects, navTarget, setNavTarget }) {
           if (!projects || !models || !agencies) {
             return <div className="p-8 text-center text-red-600">
               Error: Missing required data. Projects: {projects ? 'OK' : 'MISSING'},
@@ -16456,6 +16278,17 @@
           const [dragOverTerritoryPos, setDragOverTerritoryPos] = useState('after');
           const [editingNoteModelId, setEditingNoteModelId] = useState(null);
           const [notesDraft, setNotesDraft] = useState('');
+
+          useEffect(() => {
+            if (!navTarget) return;
+            const { modelId } = navTarget;
+            setExpandedModels(prev => ({ ...prev, [modelId]: true }));
+            setTimeout(() => {
+              const el = document.getElementById(`model-row-${modelId}`);
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              if (setNavTarget) setNavTarget(null);
+            }, 150);
+          }, [navTarget]);
 
           // Model notes stored per modelId - pull from first project of each model
           const getModelNote = (modelId) => {
@@ -16705,6 +16538,7 @@
                         onDragOver={sortMode ? (e) => handleModelDragOver(e, model.id) : undefined}
                         onDrop={sortMode ? (e) => handleModelDrop(e, model.id) : undefined}
                         onDragEnd={() => { setDraggedModelId(null); setDragOverModelId(null); setDragOverModelPos('after'); }}
+                        id={`model-row-${model.id}`}
                         className={`bg-white rounded-lg border-2 transition-all border-slate-200 ${isDraggingThis ? 'opacity-50' : ''}`}
                       >
                         {/* Model Header Row */}
