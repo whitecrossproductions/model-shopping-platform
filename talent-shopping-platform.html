@@ -14334,12 +14334,15 @@
           const [editingSigningsModel, setEditingSigningsModel] = useState(null);
           const [searchTerm, setSearchTerm] = useState('');
           const [filterGender, setFilterGender] = useState('all');
+          const [showInactive, setShowInactive] = useState(false);
 
           const filteredModels = models
             .filter(model => {
               const matchesSearch = model.name.toLowerCase().includes(searchTerm.toLowerCase());
               const matchesGender = filterGender === 'all' || model.gender === filterGender;
-              return matchesSearch && matchesGender;
+              const isInactive = model.modelStatus === 'inactive' || model.modelStatus === 'on-hold';
+              const matchesActive = showInactive || !isInactive;
+              return matchesSearch && matchesGender && matchesActive;
             })
             .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -14417,6 +14420,15 @@
                 </div>
                 <div className="flex gap-2">
                   <button
+                    onClick={() => setShowInactive(!showInactive)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      showInactive ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                    title={showInactive ? 'Hide inactive models' : 'Show inactive/on-hold models'}
+                  >
+                    {showInactive ? '👁 Showing All' : '👁 Active Only'}
+                  </button>
+                  <button
                     onClick={() => exportModelsCSV(models)}
                     className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                     title="Export models to CSV"
@@ -14435,11 +14447,13 @@
               {filteredModels.length === 0 ? (
                 <div className="bg-white rounded-lg border border-slate-200 p-12 text-center">
                   <p className="text-slate-500 mb-4">
-                    {searchTerm || filterGender !== 'all' 
+                    {searchTerm || filterGender !== 'all'
                       ? 'No models match your filters'
-                      : 'No models added yet'}
+                      : !showInactive
+                        ? 'No active models — toggle "Active Only" to see inactive/on-hold models'
+                        : 'No models added yet'}
                   </p>
-                  {!searchTerm && filterGender === 'all' && (
+                  {!searchTerm && filterGender === 'all' && showInactive && (
                     <button
                       onClick={() => setShowAddModal(true)}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -14461,6 +14475,7 @@
                         model={model}
                         shoppedTerritories={shoppedTerritories}
                         totalAgencies={totalAgencies}
+                        allTerritories={allTerritories}
                         onEdit={() => setEditingModel(model)}
                         onDelete={deleteModel}
                         onEditSignings={() => setEditingSigningsModel(model)}
@@ -14502,7 +14517,7 @@
         }
 
         // Model Card Component
-        function ModelCard({ model, shoppedTerritories, totalAgencies, onEdit, onDelete, onEditSignings }) {
+        function ModelCard({ model, shoppedTerritories, totalAgencies, allTerritories, onEdit, onDelete, onEditSignings }) {
           // Get signings for this model
           const modelSignings = BASE_SIGNED_MODELS.filter(sm =>
             sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim()
@@ -14511,8 +14526,14 @@
           const activeSignings = modelSignings.filter(s => s.status === 'signed');
           const releasedSignings = modelSignings.filter(s => s.status !== 'signed');
 
+          const signedTerritories = new Set(activeSignings.map(s => s.territory));
+          const unsignedTerritories = (allTerritories || []).filter(t => !signedTerritories.has(t));
+
+          const isInactive = model.modelStatus === 'inactive' || model.modelStatus === 'on-hold';
+          const statusLabel = model.modelStatus === 'inactive' ? 'Inactive' : model.modelStatus === 'on-hold' ? 'On Hold' : null;
+
           return (
-            <div className="bg-white rounded-lg border border-slate-200 hover:shadow-lg transition-shadow">
+            <div className={`bg-white rounded-lg border hover:shadow-lg transition-shadow ${isInactive ? 'border-amber-300 opacity-75' : 'border-slate-200'}`}>
               {model.photoUrl && (
                 <div className="w-full bg-slate-100 rounded-t-lg overflow-hidden" style={{aspectRatio: '5/7'}}>
                   <img
@@ -14526,7 +14547,14 @@
               <div className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="font-semibold text-slate-900 text-lg">{model.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-slate-900 text-lg">{model.name}</h3>
+                      {statusLabel && (
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">
+                          {statusLabel}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-slate-500 capitalize">{model.gender}</p>
                   </div>
                   <div className="flex gap-2">
@@ -14546,17 +14574,6 @@
                     </button>
                   </div>
                 </div>
-
-                {model.mediaslideLink && (
-                  <a
-                    href={model.mediaslideLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-600 hover:underline mb-3 block"
-                  >
-                    View MediaSlide Profile →
-                  </a>
-                )}
 
                 <div className="space-y-3">
                   {/* Active Signings */}
@@ -14641,6 +14658,29 @@
                     )}
                   </div>
 
+                  {unsignedTerritories.length > 0 && (
+                    <div>
+                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">
+                        Not Signed ({unsignedTerritories.length})
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {unsignedTerritories.slice(0, 6).map(territory => (
+                          <span
+                            key={territory}
+                            className="px-2 py-1 bg-slate-100 text-slate-500 rounded text-xs"
+                          >
+                            {territory}
+                          </span>
+                        ))}
+                        {unsignedTerritories.length > 6 && (
+                          <span className="px-2 py-1 bg-slate-50 text-slate-400 rounded text-xs">
+                            +{unsignedTerritories.length - 6} more
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="pt-3 border-t border-slate-100">
                     <p className="text-sm text-slate-600">
                       <span className="font-medium">{totalAgencies}</span> agencies contacted
@@ -14657,10 +14697,8 @@
           const [formData, setFormData] = useState(model || {
             name: '',
             gender: 'female',
-            mediaslideLink: '',
             photoUrl: '',
-            emailSubject: '',
-            emailBody: ''
+            modelStatus: 'active'
           });
           const [showSigningModal, setShowSigningModal] = useState(false);
 
@@ -14738,51 +14776,18 @@
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      MediaSlide Link
+                      Status
                     </label>
-                    <input
-                      type="url"
-                      value={formData.mediaslideLink || ''}
-                      onChange={(e) => setFormData({ ...formData, mediaslideLink: e.target.value })}
+                    <select
+                      value={formData.modelStatus || 'active'}
+                      onChange={(e) => setFormData({ ...formData, modelStatus: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="https://mediaslide.com/..."
-                    />
-                  </div>
-
-                  <div className="pt-4 border-t border-slate-200">
-                    <h3 className="text-sm font-semibold text-slate-700 mb-3">📧 Custom Email Template (Optional)</h3>
-                    <p className="text-xs text-slate-500 mb-3">
-                      Create a custom email template for this model. Available variables:<br/>
-                      {'{{contact_name}}'}, {'{{agency_name}}'}, {'{{territory}}'}, {'{{model_name}}'}, {'{{model_mediaslide}}'}, {'{{model_photo}}'}
-                    </p>
-
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">
-                          Email Subject
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.emailSubject || ''}
-                          onChange={(e) => setFormData({ ...formData, emailSubject: e.target.value })}
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          placeholder="e.g., Submission: {formData.name} for {'{{territory}}'}"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">
-                          Email Body
-                        </label>
-                        <textarea
-                          value={formData.emailBody || ''}
-                          onChange={(e) => setFormData({ ...formData, emailBody: e.target.value })}
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          rows="6"
-                          placeholder={`Hi {'{{contact_name}}'},\n\nI'd like to submit ${formData.name} for your consideration...\n\nBest regards`}
-                        />
-                      </div>
-                    </div>
+                    >
+                      <option value="active">Active</option>
+                      <option value="on-hold">On Hold</option>
+                      <option value="inactive">Inactive (no longer repped)</option>
+                    </select>
+                    <p className="text-xs text-slate-500 mt-1">Inactive and on-hold models are hidden by default but records are kept</p>
                   </div>
 
                   {model && (
