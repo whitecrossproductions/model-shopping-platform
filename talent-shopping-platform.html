@@ -16114,7 +16114,7 @@
           const addContact = (gender) => {
             setDivisions(divisions.map(div =>
               div.genderDivision === gender
-                ? { ...div, contacts: [...div.contacts, { name: '', email: '', role: '' }] }
+                ? { ...div, contacts: [...div.contacts, { name: '', email: '', role: '', emailType: 'cc' }] }
                 : div
             ));
           };
@@ -16333,6 +16333,14 @@
                               {currentDivision.contacts.map((contact, index) => (
                                 <div key={index} className="p-3 bg-slate-50 rounded-lg">
                                   <div className="flex items-start gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => updateContact(selectedTab, index, 'emailType', (contact.emailType || 'to') === 'to' ? 'cc' : 'to')}
+                                      className={`mt-1 flex-shrink-0 text-xs font-bold px-2 py-1 rounded border ${(contact.emailType || 'to') === 'to' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-slate-100 text-slate-500 border-slate-300'}`}
+                                      title="Click to toggle To / CC"
+                                    >
+                                      {(contact.emailType || 'to') === 'to' ? 'To' : 'CC'}
+                                    </button>
                                     <div className="flex-1 grid md:grid-cols-3 gap-3">
                                       <input
                                         type="text"
