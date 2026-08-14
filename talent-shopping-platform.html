@@ -17053,6 +17053,26 @@
           const [showEmailModal, setShowEmailModal] = useState(false);
           const [territoryExpanded, setTerritoryExpanded] = useState(false);
 
+          // Deduplicate project.agencies by resolved agency name, clean up Firebase once
+          const dedupedProjectAgencies = (() => {
+            const seen = new Set();
+            return (project.agencies || []).filter(pa => {
+              const ag = agencies.find(a => a.id === pa.agencyId);
+              if (!ag) return false; // drop orphaned references
+              if (seen.has(ag.name)) return false;
+              seen.add(ag.name);
+              return true;
+            });
+          })();
+          useEffect(() => {
+            if (agencies.length === 0) return;
+            const validIds = new Set(dedupedProjectAgencies.map(pa => pa.agencyId));
+            const hasOrphans = (project.agencies || []).some(pa => !validIds.has(pa.agencyId));
+            if (hasOrphans) {
+              onUpdate(project.id, { agencies: dedupedProjectAgencies });
+            }
+          }, [project.id, agencies.length]);
+
           const getDaysAgo = (dateString) => {
             if (!dateString) return null;
             const date = new Date(dateString);
@@ -17100,8 +17120,8 @@
 
           // Compact mode = territory row inside accordion
           if (compact) {
-            const contacted = (project.agencies || []).filter(a => a.status !== 'not-contacted').length;
-            const total = (project.agencies || []).length;
+            const contacted = dedupedProjectAgencies.filter(a => a.status !== 'not-contacted').length;
+            const total = dedupedProjectAgencies.length;
             const pct = total > 0 ? Math.round((contacted / total) * 100) : 0;
             return (
               <div>
@@ -17148,7 +17168,7 @@
                     <div className="pt-3">
                       {/* Agency Tabs */}
                       <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
-                        {project.agencies.map((pa, index) => {
+                        {dedupedProjectAgencies.map((pa, index) => {
                           const ag = agencies.find(a => a.id === pa.agencyId);
                           if (!ag) return null;
                           const sObj = AGENCY_STATUSES.find(s => s.id === pa.status);
@@ -17165,7 +17185,7 @@
                         })}
                       </div>
                       {/* Selected Agency Detail */}
-                      {project.agencies.map((pa, index) => {
+                      {dedupedProjectAgencies.map((pa, index) => {
                         if (selectedAgencyTab !== index) return null;
                         const ag = agencies.find(a => a.id === pa.agencyId);
                         if (!ag) return null;
@@ -17268,7 +17288,7 @@
                 <div className="mt-6 pt-6 border-t border-slate-200">
                   {/* Agency Tabs */}
                   <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
-                    {project.agencies.map((projectAgency, index) => {
+                    {dedupedProjectAgencies.map((projectAgency, index) => {
                       const agency = agencies.find(a => a.id === projectAgency.agencyId);
                       if (!agency) return null;
 
@@ -17312,7 +17332,7 @@
                   </div>
 
                   {/* Selected Agency Details */}
-                  {project.agencies.map((projectAgency, index) => {
+                  {dedupedProjectAgencies.map((projectAgency, index) => {
                     if (selectedAgencyTab !== index) return null;
 
                     const agency = agencies.find(a => a.id === projectAgency.agencyId);
