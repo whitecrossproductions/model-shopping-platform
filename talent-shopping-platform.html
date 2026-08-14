@@ -14519,8 +14519,12 @@
           const activeSignings = modelSignings.filter(s => s.status === 'signed');
           const releasedSignings = modelSignings.filter(s => s.status !== 'signed');
 
+          const PRIMARY_MARKETS = ['Los Angeles', 'New York', 'Paris', 'Milan', 'London'];
+          const SECONDARY_MARKETS = ['Canada', 'Germany', 'Seattle', 'Miami', 'Chicago', 'North Carolina', 'San Diego'];
+
           const signedTerritories = new Set(activeSignings.map(s => s.territory));
-          const unsignedTerritories = (allTerritories || []).filter(t => !signedTerritories.has(t));
+          const unsignedPrimary = PRIMARY_MARKETS.filter(t => !signedTerritories.has(t));
+          const unsignedSecondary = SECONDARY_MARKETS.filter(t => !signedTerritories.has(t));
 
           const isInactive = model.modelStatus === 'inactive' || model.modelStatus === 'on-hold';
           const statusLabel = model.modelStatus === 'inactive' ? 'Inactive' : model.modelStatus === 'on-hold' ? 'On Hold' : null;
@@ -14651,24 +14655,31 @@
                     )}
                   </div>
 
-                  {unsignedTerritories.length > 0 && (
+                  {(unsignedPrimary.length > 0 || unsignedSecondary.length > 0) && (
                     <div>
-                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">
-                        Not Signed ({unsignedTerritories.length})
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {unsignedTerritories.slice(0, 6).map(territory => (
-                          <span
-                            key={territory}
-                            className="px-2 py-1 bg-slate-100 text-slate-500 rounded text-xs"
-                          >
-                            {territory}
-                          </span>
-                        ))}
-                        {unsignedTerritories.length > 6 && (
-                          <span className="px-2 py-1 bg-slate-50 text-slate-400 rounded text-xs">
-                            +{unsignedTerritories.length - 6} more
-                          </span>
+                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Not Signed</p>
+                      <div className="space-y-2">
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-medium mb-1">Primary</p>
+                          {unsignedPrimary.length === 0 ? (
+                            <span className="text-xs text-emerald-600 font-medium">✓ All signed</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {unsignedPrimary.map(t => (
+                                <span key={t} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">{t}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {unsignedSecondary.length > 0 && (
+                          <div>
+                            <p className="text-[10px] text-slate-400 font-medium mb-1">Secondary</p>
+                            <div className="flex flex-wrap gap-1">
+                              {unsignedSecondary.map(t => (
+                                <span key={t} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-xs border border-slate-200">{t}</span>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>
