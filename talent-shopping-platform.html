@@ -16337,8 +16337,10 @@
                   const contacted = (project.agencies || []).filter(a => a.status !== 'not-contacted').length;
                   const total = (project.agencies || []).length;
                   const percentage = total > 0 ? (contacted / total) * 100 : 0;
+                  const hasSigned = (project.agencies || []).some(a => a.status === 'signed');
                   let overallStatus = 'not-contacted';
-                  if (percentage === 100) overallStatus = 'completed';
+                  if (hasSigned) overallStatus = 'signed';
+                  else if (percentage === 100) overallStatus = 'completed';
                   else if (percentage > 0) overallStatus = 'in-progress';
                   if (project.manualStatus) overallStatus = project.manualStatus;
                   return { ...project, contacted, total, overallStatus };
