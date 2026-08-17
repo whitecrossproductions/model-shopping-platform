@@ -13941,6 +13941,7 @@
           projects.forEach(project => {
             const model = models.find(m => m.id === project.modelId);
             if (!model) return;
+            if (project.manualStatus === 'on-hold') return;
             // Skip if model is already signed in this territory
             const combo = `${model.name.toUpperCase().trim()}|${project.territory}`;
             if (signedCombos.has(combo)) return;
