@@ -13297,6 +13297,7 @@
           const [excludedMarkets, setExcludedMarkets] = useState({});
           const [editingMarkets, setEditingMarkets] = useState(null);
           const [navTarget, setNavTarget] = useState(null);
+          const [signingsRevision, setSigningsRevision] = useState(0);
           const [todos, setTodos] = useState([]);
           const [campaigns, setCampaigns] = useState([]);
           const firebaseUpdatingRef = React.useRef(false);
@@ -13481,6 +13482,7 @@
                   });
                   BASE_SIGNED_MODELS.length = 0;
                   BASE_SIGNED_MODELS.push(...data);
+                  setSigningsRevision(r => r + 1);
                   console.log(`✅ SignedModels synced: ${data.length}`);
                 }
               }));
@@ -13682,6 +13684,7 @@
                     projects={projects}
                     setActiveTab={setActiveTab}
                     setNavTarget={setNavTarget}
+                    signingsRevision={signingsRevision}
                   />
                 )}
                 {activeTab === 'models' && (
@@ -13893,7 +13896,7 @@
         }
 
         // Dashboard Component
-        function Dashboard({ models, agencies, projects, setActiveTab, setNavTarget }) {
+        function Dashboard({ models, agencies, projects, setActiveTab, setNavTarget, signingsRevision }) {
           const PRIMARY_MARKETS = ['Los Angeles', 'New York', 'Paris', 'Milan', 'London'];
 
           const getDaysAgo = (dateStr) => {
