@@ -14283,7 +14283,6 @@
                     const modelProjects = projects.filter(c => c.modelId === model.id);
                     const shoppedTerritories = [...new Set(modelProjects.map(c => c.territory))];
                     const totalAgencies = modelProjects.reduce((sum, c) => sum + c.agencies.length, 0);
-
                     return (
                       <ModelCard
                         key={model.id}
@@ -16791,8 +16790,9 @@
           const status = statusConfig[project.overallStatus] || statusConfig['not-contacted'];
 
           const toggleAgencyStatus = (agencyId, newStatus) => {
-            const statusConfig = AGENCY_STATUSES.find(s => s.id === newStatus);
-            const shouldTrack = statusConfig?.track || false;
+            const statusConfigItem = AGENCY_STATUSES.find(s => s.id === newStatus);
+            const shouldTrack = statusConfigItem?.track || false;
+            const prevStatus = (project.agencies.find(a => a.agencyId === agencyId) || {}).status;
 
             const updatedAgencies = project.agencies.map(a => {
               if (a.agencyId === agencyId) {
@@ -16801,18 +16801,55 @@
                   status: newStatus,
                   contactedDate: newStatus !== 'not-contacted' ? new Date().toISOString() : null
                 };
-
-                // Auto-timestamp for tracked statuses (Shopped, Met-Waiting)
                 if (shouldTrack) {
                   updates.statusUpdatedAt = new Date().toISOString();
                 }
-
                 return updates;
               }
               return a;
             });
 
             onUpdate(project.id, { agencies: updatedAgencies });
+
+            const agency = agencies.find(a => a.id === agencyId);
+            if (agency && model) {
+              if (newStatus === 'signed') {
+                // Auto-create signing record if one doesn't already exist
+                const alreadyExists = BASE_SIGNED_MODELS.some(sm =>
+                  sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() &&
+                  sm.agencyName.toUpperCase().trim() === agency.name.toUpperCase().trim() &&
+                  sm.territory === project.territory &&
+                  sm.status === 'signed'
+                );
+                if (!alreadyExists) {
+                  const newSigning = {
+                    id: Date.now().toString(),
+                    modelName: model.name,
+                    agencyName: agency.name,
+                    territory: project.territory,
+                    status: 'signed',
+                    signedDate: '',
+                    releasedDate: ''
+                  };
+                  BASE_SIGNED_MODELS.push(newSigning);
+                  saveData(COLLECTIONS.SIGNED_MODELS, newSigning);
+                }
+              } else if (prevStatus === 'signed') {
+                // Remove auto-created signing record (no date = placeholder) when unmarked
+                const placeholder = BASE_SIGNED_MODELS.find(sm =>
+                  sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() &&
+                  sm.agencyName.toUpperCase().trim() === agency.name.toUpperCase().trim() &&
+                  sm.territory === project.territory &&
+                  sm.status === 'signed' &&
+                  !sm.signedDate
+                );
+                if (placeholder) {
+                  deleteData(COLLECTIONS.SIGNED_MODELS, placeholder.id);
+                  const idx = BASE_SIGNED_MODELS.findIndex(sm => sm.id === placeholder.id);
+                  if (idx !== -1) BASE_SIGNED_MODELS.splice(idx, 1);
+                }
+              }
+            }
           };
 
           // Compact mode = territory row inside accordion
