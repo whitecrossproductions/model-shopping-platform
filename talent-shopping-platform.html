@@ -13925,13 +13925,25 @@
           }).length;
 
           // --- Follow-up radar ---
+          // Build a set of "model+territory" combos that are already signed (via project OR signing record)
+          const signedCombos = new Set();
+          projects.forEach(p => {
+            if ((p.agencies || []).some(a => a.status === 'signed') && p.territory) {
+              const m = models.find(x => x.id === p.modelId);
+              if (m) signedCombos.add(`${m.name.toUpperCase().trim()}|${p.territory}`);
+            }
+          });
+          BASE_SIGNED_MODELS.filter(sm => sm.status === 'signed').forEach(sm => {
+            if (sm.modelName && sm.territory) signedCombos.add(`${sm.modelName.toUpperCase().trim()}|${sm.territory}`);
+          });
+
           const followUpGroups = [];
           projects.forEach(project => {
             const model = models.find(m => m.id === project.modelId);
             if (!model) return;
-            // Skip projects where the model is already signed
-            const alreadySigned = (project.agencies || []).some(pa => pa.status === 'signed');
-            if (alreadySigned) return;
+            // Skip if model is already signed in this territory
+            const combo = `${model.name.toUpperCase().trim()}|${project.territory}`;
+            if (signedCombos.has(combo)) return;
             const waiting = (project.agencies || []).filter(pa => {
               if (pa.status !== 'shopped' && pa.status !== 'met-waiting') return false;
               const days = getDaysAgo(pa.statusUpdatedAt || pa.contactedDate);
