@@ -13929,6 +13929,9 @@
           projects.forEach(project => {
             const model = models.find(m => m.id === project.modelId);
             if (!model) return;
+            // Skip projects where the model is already signed
+            const alreadySigned = (project.agencies || []).some(pa => pa.status === 'signed');
+            if (alreadySigned) return;
             const waiting = (project.agencies || []).filter(pa => {
               if (pa.status !== 'shopped' && pa.status !== 'met-waiting') return false;
               const days = getDaysAgo(pa.statusUpdatedAt || pa.contactedDate);
@@ -13946,11 +13949,16 @@
 
           // --- Unsigned primary markets ---
           const unsignedByModel = activeModels.map(model => {
+            // Check formal signing records
             const signedTerritories = new Set(
               BASE_SIGNED_MODELS
                 .filter(sm => sm.modelName.toUpperCase().trim() === model.name.toUpperCase().trim() && sm.status === 'signed')
                 .map(sm => sm.territory)
             );
+            // Also check project agency statuses — if any agency is signed in a project for this model+territory, treat it as signed
+            projects
+              .filter(p => p.modelId === model.id && (p.agencies || []).some(a => a.status === 'signed'))
+              .forEach(p => { if (p.territory) signedTerritories.add(p.territory); });
             const unsignedPrimary = PRIMARY_MARKETS.filter(t => !signedTerritories.has(t));
             return { model, unsignedPrimary };
           }).filter(x => x.unsignedPrimary.length > 0);
