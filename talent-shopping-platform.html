@@ -16561,18 +16561,6 @@
                     onClick={() => setExpandedModels({})}
                     className="px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
                   >Collapse All</button>
-                  {(() => {
-                    const inactiveCount = models.filter(isModelInactive).filter(m => projects.some(p => p.modelId === m.id)).length;
-                    if (inactiveCount === 0) return null;
-                    return (
-                      <button
-                        onClick={() => setShowInactiveModels(v => !v)}
-                        className="px-3 py-2 text-sm border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors"
-                      >
-                        {showInactiveModels ? '▲ Hide inactive models' : `▼ ${inactiveCount} inactive — show`}
-                      </button>
-                    );
-                  })()}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -16821,6 +16809,18 @@
                       </React.Fragment>
                     );
                   })}
+                  {(() => {
+                    const inactiveCount = models.filter(isModelInactive).filter(m => projects.some(p => p.modelId === m.id)).length;
+                    if (inactiveCount === 0) return null;
+                    return (
+                      <button
+                        onClick={() => setShowInactiveModels(v => !v)}
+                        className="w-full py-3 text-sm border border-dashed border-slate-300 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        {showInactiveModels ? '▲ Hide inactive / on-hold models' : `▼ ${inactiveCount} inactive / on-hold model${inactiveCount > 1 ? 's' : ''} — show`}
+                      </button>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -18322,22 +18322,12 @@
                   <h2 className="text-2xl font-bold text-slate-900">Campaigns</h2>
                   <p className="text-slate-500 mt-1">Bulk mediaslide packages sent to agencies by territory</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  {doneCampaigns.length > 0 && (
-                    <button
-                      onClick={() => setShowInactiveCampaigns(v => !v)}
-                      className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
-                    >
-                      {showInactiveCampaigns ? '▲ Hide archived' : `▼ ${doneCampaigns.length} archived — show`}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setShowCreateModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                  >
-                    + New Campaign
-                  </button>
-                </div>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  + New Campaign
+                </button>
               </div>
 
               {sortedCampaigns.length === 0 ? (
@@ -18406,6 +18396,14 @@
                       </div>
                     );
                   })}
+                  {doneCampaigns.length > 0 && (
+                    <button
+                      onClick={() => setShowInactiveCampaigns(v => !v)}
+                      className="w-full py-3 text-sm border border-dashed border-slate-300 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
+                    >
+                      {showInactiveCampaigns ? '▲ Hide archived campaigns' : `▼ ${doneCampaigns.length} archived campaign${doneCampaigns.length > 1 ? 's' : ''} — show`}
+                    </button>
+                  )}
                 </div>
               )}
 
