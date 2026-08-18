@@ -15242,7 +15242,11 @@
                                 <div className="font-medium text-slate-900">{mergedAgency.name}</div>
                                 {hasBothDivisions && (
                                   <div className="text-xs text-slate-500 mt-1">
-                                    Has {mergedAgency.divisions.map(d => d.genderDivision === 'MALE' ? 'Men' : 'Women').join(' & ')} divisions
+                                    Has {[...new Set(mergedAgency.divisions.map(d => {
+                                      if (d.genderDivision === 'MALE') return 'Men';
+                                      if (d.genderDivision === 'FEMALE & MALE') return 'Women & Men';
+                                      return 'Women';
+                                    }))].join(' & ')} divisions
                                   </div>
                                 )}
                               </td>
@@ -15872,24 +15876,45 @@
             a.name === agency.name && a.territory === agency.territory
           );
 
+          // Normalize genderDivision: anything that isn't 'MALE' becomes 'FEMALE'
+          // 'FEMALE & MALE' records are split — contacts appear under FEMALE, MALE gets its own slot
+          const normalizeDivision = (d) => d.genderDivision === 'MALE' ? 'MALE' : 'FEMALE';
+
           const [divisions, setDivisions] = useState(() => {
             if (existingDivisions.length > 0) {
-              return existingDivisions.map(div => ({
+              const normalized = existingDivisions.map(div => ({
                 id: div.id,
-                genderDivision: div.genderDivision,
+                genderDivision: normalizeDivision(div),
                 rankedWomen: div.rankedWomen || 0,
                 rankedMen: div.rankedMen || 0,
-                contacts: div.contacts || [],
+                contacts: div.contacts && div.contacts.length > 0 ? div.contacts : [{ name: '', email: '', role: '' }],
                 instructions: div.instructions || '',
                 notes: div.notes || ''
               }));
+              // If a 'FEMALE & MALE' record was merged into FEMALE but no MALE exists, add a blank MALE slot
+              // (only if the original had 'FEMALE & MALE')
+              const hadBothInOne = existingDivisions.some(d => d.genderDivision === 'FEMALE & MALE');
+              const hasMALE = normalized.some(d => d.genderDivision === 'MALE');
+              if (hadBothInOne && !hasMALE) {
+                const src = existingDivisions.find(d => d.genderDivision === 'FEMALE & MALE');
+                normalized.push({
+                  id: `${Date.now()}-MALE`,
+                  genderDivision: 'MALE',
+                  rankedWomen: 0,
+                  rankedMen: src?.rankedMen || 0,
+                  contacts: src?.contacts && src.contacts.length > 0 ? src.contacts.map(c => ({ ...c })) : [{ name: '', email: '', role: '' }],
+                  instructions: src?.instructions || '',
+                  notes: src?.notes || ''
+                });
+              }
+              return normalized;
             } else {
               return [{
                 id: agency.id,
                 genderDivision: 'FEMALE',
                 rankedWomen: agency.rankedWomen || 0,
                 rankedMen: agency.rankedMen || 0,
-                contacts: agency.contacts || [],
+                contacts: agency.contacts && agency.contacts.length > 0 ? agency.contacts : [{ name: '', email: '', role: '' }],
                 instructions: agency.instructions || '',
                 notes: agency.notes || ''
               }];
@@ -15900,18 +15925,19 @@
           const [territory, setTerritory] = useState(agency.territory);
           const [tier, setTier] = useState(agency.tier);
           const [rankedWomen, setRankedWomen] = useState(() => {
-            const femalDiv = existingDivisions.find(d => d.genderDivision === 'FEMALE');
+            const femalDiv = existingDivisions.find(d => normalizeDivision(d) === 'FEMALE');
             const any = existingDivisions[0];
             return (femalDiv || any)?.rankedWomen || 0;
           });
           const [rankedMen, setRankedMen] = useState(() => {
-            const maleDiv = existingDivisions.find(d => d.genderDivision === 'MALE');
+            const maleDiv = existingDivisions.find(d => normalizeDivision(d) === 'MALE');
             const any = existingDivisions[0];
             return (maleDiv || any)?.rankedMen || 0;
           });
           const [activeDivisions, setActiveDivisions] = useState(() => {
-            const hasFemale = existingDivisions.some(d => d.genderDivision === 'FEMALE');
-            const hasMale = existingDivisions.some(d => d.genderDivision === 'MALE');
+            const hasFemale = existingDivisions.some(d => normalizeDivision(d) === 'FEMALE');
+            const hasMale = existingDivisions.some(d => normalizeDivision(d) === 'MALE') ||
+                            existingDivisions.some(d => d.genderDivision === 'FEMALE & MALE');
             return {
               FEMALE: hasFemale || existingDivisions.length === 0,
               MALE: hasMale
