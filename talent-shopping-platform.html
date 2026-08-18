@@ -15028,7 +15028,9 @@
               );
             const matchesTerritory = filterTerritory === 'all' || mergedAgency.territory === filterTerritory;
             const matchesTier = filterTier === 'all' || mergedAgency.tier === `${filterTier} Tier`;
-            const matchesGenderView = mergedAgency.divisions.some(d => d.genderDivision === globalGenderView);
+            const matchesGenderView = mergedAgency.divisions.some(d =>
+              d.genderDivision === globalGenderView || d.genderDivision === 'FEMALE & MALE'
+            );
             return matchesSearch && matchesTerritory && matchesTier && matchesGenderView;
           });
 
