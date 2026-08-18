@@ -16416,8 +16416,7 @@
 
           // Group projects by model, with status enrichment
           const isModelInactive = (m) => m.modelStatus === 'inactive' || m.modelStatus === 'on-hold';
-          const modelGroups = models
-            .filter(m => showInactiveModels || !isModelInactive(m))
+          const allModelGroups = models
             .map(model => {
               const modelProjects = projects
                 .filter(p => p.modelId === model.id)
@@ -16453,6 +16452,8 @@
             })
             .filter(Boolean)
             .sort((a, b) => a.modelPriority - b.modelPriority);
+          const modelGroups = allModelGroups.filter(g => !isModelInactive(g.model));
+          const inactiveModelGroups = allModelGroups.filter(g => isModelInactive(g.model));
 
           // Model-level drag handlers
           const setModelPriority = (modelId, priority) => {
@@ -16605,7 +16606,7 @@
               </div>
 
               {/* Model Groups */}
-              {modelGroups.length === 0 ? (
+              {modelGroups.length === 0 && inactiveModelGroups.length === 0 ? (
                 <div className="bg-white rounded-lg border border-slate-200 p-12 text-center">
                   <p className="text-slate-500 mb-4">{filterTerritory !== 'all' || filterStatus !== 'all' ? 'No projects match your filters' : 'No projects yet'}</p>
                   {filterTerritory === 'all' && filterStatus === 'all' && (
@@ -16614,7 +16615,21 @@
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {modelGroups.map(({ model, projects: modelProjects, totalAgencies, totalContacted }) => {
+                  {[
+                    ...modelGroups,
+                    ...(inactiveModelGroups.length > 0 ? [{ _divider: true }] : []),
+                    ...(showInactiveModels ? inactiveModelGroups : []),
+                  ].map((item) => {
+                    if (item._divider) return (
+                      <button
+                        key="inactive-divider"
+                        onClick={() => setShowInactiveModels(v => !v)}
+                        className="w-full py-3 text-sm border border-dashed border-slate-300 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        {showInactiveModels ? '▲ Hide inactive / on-hold models' : `▼ ${inactiveModelGroups.length} inactive / on-hold model${inactiveModelGroups.length > 1 ? 's' : ''} — show`}
+                      </button>
+                    );
+                    const { model, projects: modelProjects, totalAgencies, totalContacted } = item;
                     const isExpanded = expandedModels[model.id];
                     const isDraggingThis = draggedModelId === model.id;
                     const isDragOver = dragOverModelId === model.id;
@@ -16809,18 +16824,6 @@
                       </React.Fragment>
                     );
                   })}
-                  {(() => {
-                    const inactiveCount = models.filter(isModelInactive).filter(m => projects.some(p => p.modelId === m.id)).length;
-                    if (inactiveCount === 0) return null;
-                    return (
-                      <button
-                        onClick={() => setShowInactiveModels(v => !v)}
-                        className="w-full py-3 text-sm border border-dashed border-slate-300 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
-                      >
-                        {showInactiveModels ? '▲ Hide inactive / on-hold models' : `▼ ${inactiveCount} inactive / on-hold model${inactiveCount > 1 ? 's' : ''} — show`}
-                      </button>
-                    );
-                  })()}
                 </div>
               )}
 
@@ -18338,7 +18341,21 @@
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {visibleCampaigns.map(campaign => {
+                  {[
+                    ...activeCampaigns,
+                    ...(doneCampaigns.length > 0 ? [{ _divider: true }] : []),
+                    ...(showInactiveCampaigns ? doneCampaigns : []),
+                  ].map((item) => {
+                    if (item._divider) return (
+                      <button
+                        key="archived-divider"
+                        onClick={() => setShowInactiveCampaigns(v => !v)}
+                        className="w-full py-3 text-sm border border-dashed border-slate-300 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        {showInactiveCampaigns ? '▲ Hide archived campaigns' : `▼ ${doneCampaigns.length} archived campaign${doneCampaigns.length > 1 ? 's' : ''} — show`}
+                      </button>
+                    );
+                    const campaign = item;
                     const totalPairs = (campaign.modelIds || []).length * (campaign.agencyNames || []).length;
                     const statuses = Object.values(campaign.statuses || {});
                     const contacted = statuses.filter(s => s.status !== 'not-contacted').length;
@@ -18396,14 +18413,6 @@
                       </div>
                     );
                   })}
-                  {doneCampaigns.length > 0 && (
-                    <button
-                      onClick={() => setShowInactiveCampaigns(v => !v)}
-                      className="w-full py-3 text-sm border border-dashed border-slate-300 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      {showInactiveCampaigns ? '▲ Hide archived campaigns' : `▼ ${doneCampaigns.length} archived campaign${doneCampaigns.length > 1 ? 's' : ''} — show`}
-                    </button>
-                  )}
                 </div>
               )}
 
