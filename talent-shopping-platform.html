@@ -13709,6 +13709,8 @@
                     setProjects={setProjects}
                     navTarget={navTarget}
                     setNavTarget={setNavTarget}
+                    campaigns={campaigns}
+                    setCampaigns={setCampaigns}
                   />
                 )}
                 {activeTab === 'campaigns' && (
@@ -14019,7 +14021,7 @@
 
           const statusDotColor = (status) => {
             if (status === 'shopped' || status === 'met-waiting') return '#EF9F27';
-            if (status === 'signed' || status === 'completed') return '#639922';
+            if (status === 'signed') return '#639922';
             if (status === 'passed') return '#E24B4A';
             return '#888780';
           };
@@ -16338,7 +16340,7 @@
         }
 
         // Projects Component with NEW STRUCTURE
-        function Projects({ models, agencies, projects, setProjects, navTarget, setNavTarget }) {
+        function Projects({ models, agencies, projects, setProjects, navTarget, setNavTarget, campaigns, setCampaigns }) {
           if (!projects || !models || !agencies) {
             return <div className="p-8 text-center text-red-600">
               Error: Missing required data. Projects: {projects ? 'OK' : 'MISSING'},
@@ -16420,12 +16422,12 @@
                 .map(project => {
                   const contacted = (project.agencies || []).filter(a => a.status !== 'not-contacted').length;
                   const total = (project.agencies || []).length;
-                  const percentage = total > 0 ? (contacted / total) * 100 : 0;
                   const hasSigned = (project.agencies || []).some(a => a.status === 'signed');
+                  const allPassed = total > 0 && (project.agencies || []).every(a => a.status === 'passed');
                   let overallStatus = 'not-contacted';
                   if (hasSigned) overallStatus = 'signed';
-                  else if (percentage === 100) overallStatus = 'completed';
-                  else if (percentage > 0) overallStatus = 'in-progress';
+                  else if (allPassed) overallStatus = 'passed';
+                  else if (contacted > 0) overallStatus = 'in-progress';
                   if (project.manualStatus) overallStatus = project.manualStatus;
                   return { ...project, contacted, total, overallStatus };
                 })
@@ -16544,7 +16546,9 @@
                     <option value="all">All Statuses</option>
                     <option value="not-contacted">Not Contacted</option>
                     <option value="in-progress">In Progress</option>
-                    <option value="completed">Completed</option>
+                    <option value="passed">Passed</option>
+                    <option value="signed">Signed</option>
+                    <option value="on-hold">On Hold</option>
                   </select>
                   <button
                     onClick={() => setExpandedModels(modelGroups.reduce((acc, g) => ({ ...acc, [g.model.id]: true }), {}))}
@@ -16729,7 +16733,7 @@
                         {isExpanded && (
                           <div className="border-t border-slate-100">
                             {(() => {
-                              const HIDDEN_STATUSES = ['completed', 'on-hold', 'signed', 'passed'];
+                              const HIDDEN_STATUSES = ['on-hold', 'signed', 'passed'];
                               const showingHidden = showHiddenMap[model.id];
                               const hiddenProjects = modelProjects.filter(p => HIDDEN_STATUSES.includes(p.overallStatus));
                               const visibleProjects = modelProjects.filter(p => !HIDDEN_STATUSES.includes(p.overallStatus));
@@ -16758,6 +16762,8 @@
                                         onUpdate={updateProject}
                                         sortMode={sortMode}
                                         compact={true}
+                                        campaigns={campaigns}
+                                        setCampaigns={setCampaigns}
                                       />
                                     </div>
                                     {isTerritoryDragOver && sortMode && dragOverTerritoryPos === 'after' && (
@@ -16777,8 +16783,8 @@
                                       >
                                         <span className="text-xs text-slate-400">
                                           {showingHidden
-                                            ? '▲ Hide completed / on hold'
-                                            : `▼ ${hiddenProjects.length} completed / on hold — show`}
+                                            ? '▲ Hide signed / passed / on hold'
+                                            : `▼ ${hiddenProjects.length} signed / passed / on hold — show`}
                                         </span>
                                       </div>
                                       {showingHidden && (
@@ -16829,7 +16835,7 @@
         }
 
         // Project Card with Tabbed Agency List
-        function ProjectCard({ project, model, agencies, onEdit, onDelete, onUpdate, sortMode, compact }) {
+        function ProjectCard({ project, model, agencies, onEdit, onDelete, onUpdate, sortMode, compact, campaigns, setCampaigns }) {
           const [selectedAgencyTab, setSelectedAgencyTab] = useState(0);
           const [showEmailModal, setShowEmailModal] = useState(false);
           const [territoryExpanded, setTerritoryExpanded] = useState(false);
@@ -16866,7 +16872,6 @@
           const statusConfig = {
             'not-contacted': { label: 'Not Contacted', className: 'bg-slate-50 text-slate-700' },
             'in-progress': { label: 'In Progress', className: 'bg-blue-50 text-blue-700' },
-            'completed': { label: 'Completed', className: 'bg-emerald-50 text-emerald-700' },
             'on-hold': { label: 'On Hold', className: 'bg-amber-50 text-amber-700' },
             'signed': { label: 'Signed', className: 'bg-purple-50 text-purple-700' },
             'passed': { label: 'Passed', className: 'bg-red-50 text-red-600' },
@@ -16934,6 +16939,18 @@
                   if (idx !== -1) BASE_SIGNED_MODELS.splice(idx, 1);
                 }
               }
+
+              // Sync status back to campaign if this agency came from one
+              const pa = project.agencies.find(a => a.agencyId === agencyId);
+              if (pa?.fromCampaign && setCampaigns) {
+                const key = `${model.id}__${agency.name}`;
+                setCampaigns(prev => prev.map(c => {
+                  if (c.id !== pa.fromCampaign) return c;
+                  const updated = { ...c, statuses: { ...(c.statuses || {}), [key]: { status: newStatus } } };
+                  saveData(COLLECTIONS.CAMPAIGNS, updated);
+                  return updated;
+                }));
+              }
             }
           };
 
@@ -16966,7 +16983,6 @@
                     <option value="not-contacted">Not Contacted</option>
                     <option value="in-progress">In Progress</option>
                     <option value="on-hold">On Hold</option>
-                    <option value="completed">Completed</option>
                     <option value="signed">Signed</option>
                     <option value="passed">Passed</option>
                   </select>
@@ -18150,6 +18166,7 @@
         function Campaigns({ campaigns, setCampaigns, models, agencies, projects, setProjects }) {
           const [showCreateModal, setShowCreateModal] = useState(false);
           const [activeCampaign, setActiveCampaign] = useState(null);
+          const [showInactiveCampaigns, setShowInactiveCampaigns] = useState(false);
 
           // Sync campaign model-agency statuses into the Projects tab
           const syncCampaignToProjects = (campaign) => {
@@ -18260,7 +18277,15 @@
             );
           }
 
+          const isCampaignDone = (campaign) => {
+            const statuses = Object.values(campaign.statuses || {}).map(s => s.status);
+            return statuses.length > 0 && statuses.every(s => s === 'signed' || s === 'passed');
+          };
+
           const sortedCampaigns = [...campaigns].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          const activeCampaigns = sortedCampaigns.filter(c => !isCampaignDone(c));
+          const doneCampaigns = sortedCampaigns.filter(c => isCampaignDone(c));
+          const visibleCampaigns = showInactiveCampaigns ? sortedCampaigns : activeCampaigns;
 
           return (
             <div className="space-y-6">
@@ -18269,12 +18294,22 @@
                   <h2 className="text-2xl font-bold text-slate-900">Campaigns</h2>
                   <p className="text-slate-500 mt-1">Bulk mediaslide packages sent to agencies by territory</p>
                 </div>
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  + New Campaign
-                </button>
+                <div className="flex items-center gap-3">
+                  {doneCampaigns.length > 0 && (
+                    <button
+                      onClick={() => setShowInactiveCampaigns(v => !v)}
+                      className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
+                    >
+                      {showInactiveCampaigns ? '▲ Hide done' : `▼ ${doneCampaigns.length} done — show`}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  >
+                    + New Campaign
+                  </button>
+                </div>
               </div>
 
               {sortedCampaigns.length === 0 ? (
@@ -18285,7 +18320,7 @@
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {sortedCampaigns.map(campaign => {
+                  {visibleCampaigns.map(campaign => {
                     const totalPairs = (campaign.modelIds || []).length * (campaign.agencyNames || []).length;
                     const statuses = Object.values(campaign.statuses || {});
                     const contacted = statuses.filter(s => s.status !== 'not-contacted').length;
