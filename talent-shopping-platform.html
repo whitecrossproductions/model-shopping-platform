@@ -15654,10 +15654,9 @@
 
           const handleSubmit = (e) => {
             e.preventDefault();
-            if (formData.name && formData.contacts.some(c => c.name)) {
-              onSave(formData);
-              onClose();
-            }
+            if (!formData.name) return;
+            onSave(formData);
+            onClose();
           };
 
           return (
