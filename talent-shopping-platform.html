@@ -16357,6 +16357,7 @@
           const [expandedModels, setExpandedModels] = useState({});
           const [showHiddenMap, setShowHiddenMap] = useState({});
           const [draggedModelId, setDraggedModelId] = useState(null);
+          const [showInactiveModels, setShowInactiveModels] = useState(false);
           const [draggedTerritoryId, setDraggedTerritoryId] = useState(null);
           const [dragOverModelId, setDragOverModelId] = useState(null);
           const [dragOverModelPos, setDragOverModelPos] = useState('after');
@@ -16414,7 +16415,9 @@
           };
 
           // Group projects by model, with status enrichment
+          const isModelInactive = (m) => m.modelStatus === 'inactive' || m.modelStatus === 'on-hold';
           const modelGroups = models
+            .filter(m => showInactiveModels || !isModelInactive(m))
             .map(model => {
               const modelProjects = projects
                 .filter(p => p.modelId === model.id)
@@ -16558,6 +16561,18 @@
                     onClick={() => setExpandedModels({})}
                     className="px-3 py-2 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
                   >Collapse All</button>
+                  {(() => {
+                    const inactiveCount = models.filter(isModelInactive).filter(m => projects.some(p => p.modelId === m.id)).length;
+                    if (inactiveCount === 0) return null;
+                    return (
+                      <button
+                        onClick={() => setShowInactiveModels(v => !v)}
+                        className="px-3 py-2 text-sm border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        {showInactiveModels ? '▲ Hide inactive models' : `▼ ${inactiveCount} inactive — show`}
+                      </button>
+                    );
+                  })()}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -18277,14 +18292,27 @@
             );
           }
 
-          const isCampaignDone = (campaign) => {
-            const statuses = Object.values(campaign.statuses || {}).map(s => s.status);
-            return statuses.length > 0 && statuses.every(s => s === 'signed' || s === 'passed');
+          const archiveCampaign = (id) => {
+            setCampaigns(prev => prev.map(c => {
+              if (c.id !== id) return c;
+              const updated = { ...c, archived: true };
+              saveData(COLLECTIONS.CAMPAIGNS, updated);
+              return updated;
+            }));
+          };
+
+          const unarchiveCampaign = (id) => {
+            setCampaigns(prev => prev.map(c => {
+              if (c.id !== id) return c;
+              const updated = { ...c, archived: false };
+              saveData(COLLECTIONS.CAMPAIGNS, updated);
+              return updated;
+            }));
           };
 
           const sortedCampaigns = [...campaigns].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-          const activeCampaigns = sortedCampaigns.filter(c => !isCampaignDone(c));
-          const doneCampaigns = sortedCampaigns.filter(c => isCampaignDone(c));
+          const activeCampaigns = sortedCampaigns.filter(c => !c.archived);
+          const doneCampaigns = sortedCampaigns.filter(c => c.archived);
           const visibleCampaigns = showInactiveCampaigns ? sortedCampaigns : activeCampaigns;
 
           return (
@@ -18300,7 +18328,7 @@
                       onClick={() => setShowInactiveCampaigns(v => !v)}
                       className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
                     >
-                      {showInactiveCampaigns ? '▲ Hide done' : `▼ ${doneCampaigns.length} done — show`}
+                      {showInactiveCampaigns ? '▲ Hide archived' : `▼ ${doneCampaigns.length} archived — show`}
                     </button>
                   )}
                   <button
@@ -18363,10 +18391,17 @@
                               {passed > 0 && <span className="text-xs px-2 py-0.5 bg-red-50 text-red-700 rounded-full font-medium">{passed} passed</span>}
                             </div>
                           </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDelete(campaign.id); }}
-                            className="text-slate-300 hover:text-red-500 transition-colors p-1 shrink-0"
-                          >🗑️</button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); campaign.archived ? unarchiveCampaign(campaign.id) : archiveCampaign(campaign.id); }}
+                              className="text-xs px-2 py-1 rounded border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
+                              title={campaign.archived ? 'Unarchive' : 'Archive'}
+                            >{campaign.archived ? 'Unarchive' : 'Archive'}</button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDelete(campaign.id); }}
+                              className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                            >🗑️</button>
+                          </div>
                         </div>
                       </div>
                     );
