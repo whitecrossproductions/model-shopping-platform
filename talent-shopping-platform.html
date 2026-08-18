@@ -17470,7 +17470,7 @@
             // Filter strictly by territory, gender division, and tier
             const filtered = agencies.filter(agency => {
               if (agency.territory !== selectedTerritory) return false;
-              if (agency.genderDivision !== preferredDivision) return false;
+              if (agency.genderDivision !== preferredDivision && agency.genderDivision !== 'FEMALE & MALE') return false;
               // Include agencies with no tier always; otherwise apply tier filter
               if (agency.tier && !selectedTiers.includes(agency.tier)) return false;
 
@@ -17816,7 +17816,7 @@
             // Filter strictly by territory, gender division, and tier
             const filtered = agencies.filter(agency => {
               if (agency.territory !== selectedTerritory) return false;
-              if (agency.genderDivision !== preferredDivision) return false;
+              if (agency.genderDivision !== preferredDivision && agency.genderDivision !== 'FEMALE & MALE') return false;
               // Include agencies with no tier always; otherwise apply tier filter
               if (agency.tier && !selectedTiers.includes(agency.tier)) return false;
 
